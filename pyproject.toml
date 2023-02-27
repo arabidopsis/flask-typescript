@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "flask-typescript"
+version = "0.1.0"
+description = ""
+authors = ["arabidopsis <ian.castleden@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "flask_typescript"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pydantic = "^1.10.5"
+flask = "^2.2.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
