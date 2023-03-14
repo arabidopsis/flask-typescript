@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import json
 from functools import wraps
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
 
-from flask import jsonify
+from flask import Flask
+from flask import make_response
 from flask import request
 from pydantic import BaseModel
 from pydantic import ValidationError
 from werkzeug.datastructures import ImmutableMultiDict
+
+from .typing import TSBuilder
+from .typing import TSField
+from .typing import TSInterface
 
 
 def converter(model: type[BaseModel]) -> Callable[[ImmutableMultiDict], BaseModel]:
@@ -36,6 +42,10 @@ def to_ts(model: type[BaseModel]) -> str:
     return to_ts_schema(schema)
 
 
+def repr(v):
+    return json.dumps(v)
+
+
 def to_ts_schema(schema: dict[str, Any]) -> str:
     def props(definitions):
         ret = []
@@ -50,16 +60,20 @@ def to_ts_schema(schema: dict[str, Any]) -> str:
                 typ = gettype(p["items"])
             else:
                 islist = ""
-
+            if typ in {"integer", "float"}:
+                typ = "number"
             return f"{typ}{islist}"
 
         for name, p in definitions.items():
             typ = gettype(p)
             if "default" in p:
                 q = "?"
+                v = repr(p["default"])
+                default = f" /* ={v} */"
             else:
                 q = ""
-            row = f"{name}{q}: {typ};"
+                default = ""
+            row = f"{name}{q}: {typ}{default};"
             ret.append(row)
         return ret
 
@@ -74,8 +88,8 @@ def to_ts_schema(schema: dict[str, Any]) -> str:
     ret = props(schema["properties"])
     attrs = "\t" + "\n\t".join(ret)
 
-    s = f"""export type {schema['title']} {{
-    {attrs}
+    s = f"""export type {schema['title']} = {{
+{attrs}
 }}"""
     out.append(s)
     return "\n".join(out)
@@ -87,11 +101,16 @@ MISSING = object()
 class Api:
     def __init__(self):
         self.dataclasses = set()
+        self.builder = TSBuilder()
+        self.funcs = []
 
     def __call__(self, func):
         return self.api(func)
 
     def api(self, func):
+        ts = self.builder(func)
+        self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
+
         hints = get_type_hints(func)
         cargs = {}
 
@@ -129,11 +148,12 @@ class Api:
                 kwargs.update(args)
                 ret = func(**kwargs)
                 if asjson:
-                    ret = jsonify(ret.json())
+                    ret = make_response(ret.json())
+                    ret.headers["Content-Type"] = "application/json"
                 return ret
             except ValidationError as e:
-                ret = jsonify(e.json())
-                ret.status_code = 400
+                ret = make_response(e.json(), 400)
+                ret.headers["Content-Type"] = "application/json"
                 return ret
 
         return myfunc
@@ -141,3 +161,12 @@ class Api:
     def to_ts(self):
         for model in self.dataclasses:
             print(to_ts(model))
+
+        interface = TSInterface(name="App", fields=self.funcs)
+        print(interface)
+        for build_func in self.builder.process_seen():
+            print(build_func())
+
+    def init_app(self, app: Flask) -> None:
+        if "flask-typescript" not in app.extensions:
+            app.extensions["flask-typescript"] = {}

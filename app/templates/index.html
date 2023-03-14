@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+</head>
+
+<body>
+
+    <form id="myform" method='post' action="{{url_for('aaa')}}">
+        <button type="submit">Submit</button>
+        <input type="text" name="query" value="c" />
+        <input type="checkbox" name="doit" />
+        <select multiple name="selected">
+            <option selected>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+        </select>
+        <input type="number" name="extra" value="5" />
+    </form>
+    <div id="result"></div>
+    <button id="json1">test</button>
+</body>
+<script>
+    {% include "index.js" %}
+</script>
+
+</html>
