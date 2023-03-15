@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from functools import wraps
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
 
 from flask import Flask
+from flask import g
 from flask import make_response
 from flask import request
 from pydantic import BaseModel
@@ -20,33 +22,55 @@ from .typing import TSInterface
 
 def converter(model: type[BaseModel]) -> Callable[[ImmutableMultiDict], BaseModel]:
     ret = {}
-    for name, p in model.schema()["properties"].items():
-        if p["type"] == "array":
-            ret[name] = lambda name, values: values.getlist(name)
+
+    def getlist(name: str, values: ImmutableMultiDict, hasdefault: bool):
+        if hasdefault and name not in values:
+            return None
+        return values.getlist(name)
+
+    def getval(name: str, values: ImmutableMultiDict, hasdefault: bool):
+        return values.get(name)
+
+    schema = model.schema()
+    required = set(schema.get("required", []))
+
+    for name, p in schema["properties"].items():
+        typ = p["type"]
+        hasdefault = name not in required
+        if typ == "array":
+            ret[name] = getlist, hasdefault
         else:
-            ret[name] = lambda name, values: values.get(name)
+            ret[name] = getval, hasdefault
 
     def convert(values: ImmutableMultiDict) -> BaseModel:
         args = {}
-        for name, cvt in ret.items():
-            if name not in values:
+        for name, (cvt, hasdefault) in ret.items():
+            v = cvt(name, values, hasdefault)
+            if v is None:
                 continue
-            args[name] = cvt(name, values)
+            args[name] = v
         return model(**args)
 
     return convert
 
 
-def to_ts(model: type[BaseModel]) -> str:
+def to_ts(model: type[BaseModel], seen: set[str] | None = None) -> str:
+    if seen is None:
+        seen = set()
+    if model.__name__ in seen:
+        return ""
     schema = model.schema()
-    return to_ts_schema(schema)
+    try:
+        return to_ts_schema(schema, seen)
+    finally:
+        seen.add(model.__name__)
 
 
 def repr(v):
     return json.dumps(v)
 
 
-def to_ts_schema(schema: dict[str, Any]) -> str:
+def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
     def props(definitions):
         ret = []
 
@@ -82,8 +106,11 @@ def to_ts_schema(schema: dict[str, Any]) -> str:
 
     if definitions:
         for k, d in definitions.items():
-            s = to_ts_schema(d)
+            if k in seen:
+                continue
+            s = to_ts_schema(d, seen)
             out.append(s)
+            seen.add(k)
 
     ret = props(schema["properties"])
     attrs = "\t" + "\n\t".join(ret)
@@ -99,23 +126,31 @@ MISSING = object()
 
 
 class Api:
-    def __init__(self):
-        self.dataclasses = set()
+    def __init__(self, name: str | None = None):
+        self.dataclasses: set[type[BaseModel]] = set()
         self.builder = TSBuilder()
-        self.funcs = []
+        self.funcs: list[TSField] = []
+        self.name = name
 
     def __call__(self, func):
         return self.api(func)
 
     def api(self, func):
         ts = self.builder(func)
+        ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
 
         hints = get_type_hints(func)
         cargs = {}
 
         def getvalues():
-            return request.json if request.is_json else request.values
+            if not hasattr(g, "_ts_values"):
+                g._ts_values = (
+                    ImmutableMultiDict(request.json)
+                    if request.is_json
+                    else request.values
+                )
+            return g._ts_values
 
         def getvalue(name, t):
             values = getvalues()
@@ -158,15 +193,28 @@ class Api:
 
         return myfunc
 
-    def to_ts(self):
+    def to_ts(self, name: str = "App"):
+        seen: set[str] = set()
         for model in self.dataclasses:
-            print(to_ts(model))
-
-        interface = TSInterface(name="App", fields=self.funcs)
+            print(to_ts(model, seen))
+        interface = TSInterface(name=name, fields=self.funcs)
         print(interface)
-        for build_func in self.builder.process_seen():
-            print(build_func())
+        # for build_func in self.builder.process_seen():
+        #     print(build_func())
+
+    def show_api(self, app: Flask) -> None:
+        self.to_ts(self.name or app.name.split(".")[-1].title())
 
     def init_app(self, app: Flask) -> None:
         if "flask-typescript" not in app.extensions:
-            app.extensions["flask-typescript"] = {}
+            app.extensions["flask-typescript"] = set()
+
+            @app.cli.command("api")
+            # @click.argument("name")
+            def show_api():
+                d = app.extensions["flask-typescript"]
+                for api in d:
+                    api.show_api(app)
+
+        d = app.extensions["flask-typescript"]
+        d.add(self)

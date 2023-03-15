@@ -8,15 +8,19 @@
 
     <form id="myform" method='post' action="{{url_for('aaa')}}">
         <button type="submit">Submit</button>
-        <input type="text" name="query" value="c" />
-        <input type="checkbox" name="doit" />
-        <select multiple name="selected">
+        query: <input type="text" name="query" value="c" />
+        doit: <input type="checkbox" name="doit" />
+        selected: <select multiple name="selected">
             <option selected>1</option>
             <option>2</option>
             <option>3</option>
             <option>4</option>
         </select>
-        <input type="number" name="extra" value="5" />
+        extra: <input type="number" name="extra" value="5" />
+        checked:
+        a<input type="checkbox" name="checked" value="a">
+        b<input type="checkbox" name="checked" value="b">
+        c<input type="checkbox" name="checked" value="c">
     </form>
     <div id="result"></div>
     <button id="json1">test</button>

@@ -20,11 +20,9 @@ from typing import get_type_hints
 from typing import Iterator
 from typing import NamedTuple
 from typing import Sequence
-from typing import TextIO
 from typing import Type
 from typing import Union
 
-import click
 from pydantic import BaseModel
 from werkzeug.datastructures import FileStorage
 
@@ -83,9 +81,6 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
         for d in [get_default(f)]
         if d is not MISSING
     }
-
-
-# JDC = "dataclasses_json"
 
 
 TSTypeable = Union[Type[Any], Callable[..., Any]]
@@ -187,13 +182,6 @@ class TSField:
         q = "?" if with_optional and self.default is not None else ""
         return f"{self.name}{q}{self.colon}{self.type}{default}"
 
-    def to_js(self, with_default: bool = True, as_comment: bool = True) -> str:
-        if with_default:
-            default = self.make_default(as_comment)
-        else:
-            default = ""
-        return f"{self.name}{default}"
-
     def __str__(self) -> str:
         return self.to_ts()
 
@@ -209,11 +197,15 @@ class TSInterface:
     export: bool = True
     nl: str = NL
     with_defaults: bool = True
+    interface: str = "interface"
 
     def to_ts(self) -> str:
         export = "export " if self.export else ""
         nl = self.nl
-        return f"{export}interface {self.name} {{{nl}{self.ts_fields()}{nl}}}"
+        eq = "= " if self.interface == "type" else ""
+        return (
+            f"{export}{self.interface} {self.name} {eq}{{{nl}{self.ts_fields()}{nl}}}"
+        )
 
     def ts_fields(self):
         nl = self.nl
@@ -236,19 +228,6 @@ class TSInterface:
 
 
 @dataclass
-class TSClass(TSInterface):
-    as_ts: bool = True
-
-    def to_ts(self) -> str:
-        nl = self.nl
-        export = "export " if self.export else ""
-        implements = f" implements {self.name}" if self.as_ts else ""
-        return (
-            f"{export}class {self.name}Class{implements} {{{nl}{self.ts_fields()}{nl}}}"
-        )
-
-
-@dataclass
 class TSFunction:
     name: str
     args: list[TSField]
@@ -258,6 +237,7 @@ class TSFunction:
     body: str | None = None
     nl: str = NL
     indent: str = INDENT
+    isasync: bool = False
 
     @property
     def requires_post(self) -> bool:
@@ -271,32 +251,15 @@ class TSFunction:
         sargs = self.ts_args()
         export = "export " if self.export else ""
         if self.body is None:
-            return f"{export}type {self.name} = ({sargs}) => {self.returntype}"
+            return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
 
-        return f"{export}const {self.name} = ({sargs}): {self.returntype} =>{self.ts_body()}"
-
-    def to_js(self) -> str:
-        sargs = self.js_args()
-        export = "export " if self.export else ""
-        if self.body is None:
-            return f"{export}type {self.name} = ({sargs})"
-
-        return f"{export}{self.name} = ({sargs}){self.ts_body()}"
+        return f"{export}const {self.name} = ({sargs}): {self.async_returntype} =>{self.ts_body()}"
 
     def ts_args(self) -> str:
         return ", ".join(
             f.to_ts(
                 with_default=self.with_defaults,
                 with_optional=True,
-                as_comment=self.body is None,
-            )
-            for f in self.args
-        )
-
-    def js_args(self) -> str:
-        return ", ".join(
-            f.to_js(
-                with_default=self.with_defaults,
                 as_comment=self.body is None,
             )
             for f in self.args
@@ -313,16 +276,19 @@ class TSFunction:
     def __str__(self) -> str:
         return self.to_ts()
 
-    def anonymous(self, as_ts=True) -> str:
-        assert as_ts or self.body is not None
-        sargs = self.ts_args() if as_ts else self.js_args()
-        if as_ts:
-            arrow = " =>" if self.body is None else ":"
-            return f"({sargs}){arrow} {self.returntype}{self.ts_body()}"
-        return f"({sargs}){self.ts_body()}"
+    def anonymous(self) -> str:
+        sargs = self.ts_args()
+        arrow = " =>" if self.body is None else ":"
+        return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
 
     def is_typed(self) -> bool:
         return all(f.is_typed() for f in self.args) and self.returntype != "any"
+
+    @property
+    def async_returntype(self) -> str:
+        if self.isasync:
+            return f"Promise<{self.returntype}>"
+        return self.returntype
 
 
 DEFAULTS: dict[type[Any], str] = {
@@ -479,7 +445,11 @@ class TSBuilder:
             )
 
     def get_dc_ts(self, typ: type[Any]) -> TSInterface:
-        return TSInterface(name=typ.__name__, fields=list(self.get_field_types(typ)))
+        return TSInterface(
+            name=typ.__name__,
+            fields=list(self.get_field_types(typ)),
+            interface="type",
+        )
 
     def get_func_ts(self, func: Callable[..., Any]) -> TSFunction:
         if not callable(func):
@@ -547,80 +517,3 @@ class TSBuilder:
         # if isinstance(value, (float, int)):
         #     return s
         return repr(value)
-
-
-def is_typeable(o: Any) -> bool:
-    return (
-        is_dataclass_type(o)
-        or isinstance(o, FunctionType)
-        or is_typeddict(o)
-        or is_pydantic(o)
-    )
-
-
-def find_typeable(dc: str) -> Iterator[TSTypeable]:
-    m = dc.rsplit(":", 1)
-    mod = import_module(m[0])
-    if len(m) > 1:
-        func = getattr(mod, m[1])
-        if is_typeable(func):
-            yield func
-    else:
-        for o in mod.__dict__.values():
-            if is_typeable(o):
-                yield o
-
-
-def typescript(
-    modules: list[str],
-    no_errors: bool = False,
-    variables: list[str] | None = None,
-    raise_exc: bool = False,
-    output: TextIO | None = None,
-) -> None:
-    """Generate typescript from functions and dataclasses"""
-    import sys
-
-    if output is None:
-        output = sys.stdout
-
-    def out(s: str):
-        click.echo(s, file=output)
-
-    def check_output(build_func: Callable[[], TSThing]) -> None:
-        try:
-            ot = build_func()
-            if ot.is_typed():
-                if isinstance(ot, TSFunction):
-                    # convert to anonymous function
-                    app.append(TSField(name=ot.name, type=ot.anonymous()))
-                else:
-                    out(str(ot))
-                    # out(str(ot.serializer()))
-        except Exception as e:  # pylint: disable=broad-except
-            msg = "// " + "// ".join(f"error for: {e}".splitlines())
-            if not no_errors:
-                out(msg)
-            else:
-                click.secho(msg, fg="red", err=True)
-            if raise_exc:
-                raise
-
-    builder = TSBuilder(variables)
-
-    def buildit(o: TSTypeable) -> Callable[[], TSThing]:
-        return lambda: builder(o)
-
-    for mod in modules:
-        app: list[TSField] = []
-        out(f"// Module: {mod}")
-        for o in find_typeable(mod):
-            if o.__name__ in builder.seen:
-                continue
-            check_output(buildit(o))
-
-        if app:
-            out(str(TSInterface(name="App", fields=app)))
-
-    for build_func in builder.process_seen():
-        check_output(build_func)
