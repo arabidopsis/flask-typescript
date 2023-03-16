@@ -7,15 +7,17 @@
         // e.stopPropagation()
         result.textContent = ''
         const formData = new FormData(form)
-        console.log('any checked?', 'checked' in formData)
         for (const [key, value] of formData) {
             result.textContent += `${key}: ${value}\n`;
         }
+
+        console.log('any checked?', formData.has('checked'))
+
         try {
             const resp = await fetch(form.action, { method: 'post', body: formData })
             const json = await resp.json()
-            console.log(resp.ok, resp.status === 200, json)
-
+            console.log(resp.ok, json)
+            // as json
             const obj = JSON.stringify(await serializeFormData(formData))
             const resp1 = await fetch(form.action, {
                 method: 'post',
@@ -34,6 +36,7 @@
 
 
 
+
     const json1 = document.getElementById('json1')
     json1.addEventListener('click', async (e) => {
         const resp = await fetch('/json', { method: 'post' })
@@ -41,25 +44,52 @@
         console.log(resp.ok, json, typeof json)
         //await getit(form.action, new FormData(form))
     })
-})()
+})();
 
+(function () {
+    const form = document.getElementById('filestorage')
+
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        // e.stopPropagation()
+        const formData = new FormData(form)
+
+        // this works with a File object
+
+        try {
+            const resp = await fetch(form.action, { method: 'post', body: formData })
+            const json = await resp.json()
+            console.log(resp.ok, resp.status === 200, json)
+        } catch (e) {
+            console.log('err', e)
+        }
+
+    })
+
+})();
 
 async function serializeFormData(formData) {
     const obj = {}
 
-    for (const [key, value] of formData.entries()) {
-        if (!(value instanceof File)) {
-            const o = obj[key]
-            if (o === undefined) {
-                obj[key] = value;
-            } else if (Array.isArray(o)) {
-                o.push(value)
-            } else {
-                obj[key] = [o, value]
-            }
-        } else {
-            obj[key] = await value.text()
+    async function cvt(value) {
+        if (value instanceof File) {
+            return await value.text()
         }
+        return value
+    }
+
+    for (let [key, value] of formData.entries()) {
+        const o = obj[key]
+        value = await cvt(value)
+        if (o === undefined) {
+            obj[key] = value;
+        } else if (Array.isArray(o)) {
+            o.push(value)
+        } else {
+            obj[key] = [o, value]
+        }
+
     }
     return obj;
 };

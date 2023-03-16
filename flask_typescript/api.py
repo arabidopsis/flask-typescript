@@ -13,6 +13,8 @@ from flask import make_response
 from flask import request
 from pydantic import BaseModel
 from pydantic import ValidationError
+from werkzeug.datastructures import CombinedMultiDict
+from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import ImmutableMultiDict
 
 from .typing import TSBuilder
@@ -21,35 +23,61 @@ from .typing import TSInterface
 
 
 def converter(model: type[BaseModel]) -> Callable[[ImmutableMultiDict], BaseModel]:
+    schema = model.schema()
+
+    cvt = convert_from_schema(schema)
+
+    def convert(values: ImmutableMultiDict) -> BaseModel:
+        return model(**cvt(values))
+
+    return convert
+
+
+def convert_from_schema(
+    schema: dict[str, Any],
+    prefix="",
+) -> Callable[[ImmutableMultiDict], dict[str, Any]]:
     ret = {}
 
     def getlist(name: str, values: ImmutableMultiDict, hasdefault: bool):
+        name = prefix + name
         if hasdefault and name not in values:
-            return None
+            return MISSING
         return values.getlist(name)
 
     def getval(name: str, values: ImmutableMultiDict, hasdefault: bool):
-        return values.get(name)
+        return values.get(prefix + name, MISSING)
 
-    schema = model.schema()
+    def getter(d):
+        def get(name, values: ImmutableMultiDict, hasdefault: bool):
+            return d(values)
+
+        return get
+
     required = set(schema.get("required", []))
 
     for name, p in schema["properties"].items():
-        typ = p["type"]
         hasdefault = name not in required
+        if "$ref" in p:
+            mname = schema["definitions"][getname(p["$ref"])]
+            d = convert_from_schema(mname, prefix=f"{prefix}{name}.")
+            ret[name] = getter(d), hasdefault
+            continue
+
+        typ = p["type"]
         if typ == "array":
             ret[name] = getlist, hasdefault
         else:
             ret[name] = getval, hasdefault
 
-    def convert(values: ImmutableMultiDict) -> BaseModel:
+    def convert(values: ImmutableMultiDict) -> dict[str, Any]:
         args = {}
         for name, (cvt, hasdefault) in ret.items():
             v = cvt(name, values, hasdefault)
-            if v is None:
+            if v is MISSING:
                 continue
             args[name] = v
-        return model(**args)
+        return args
 
     return convert
 
@@ -70,13 +98,17 @@ def repr(v):
     return json.dumps(v)
 
 
+def getname(s: str) -> str:
+    return s.split("/")[-1]
+
+
 def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
     def props(definitions):
         ret = []
 
         def gettype(p):
             if "$ref" in p:
-                typ = p["$ref"].split("/")[-1]
+                typ = getname(p["$ref"])
             else:
                 typ = p["type"]
             if typ == "array":
@@ -148,7 +180,7 @@ class Api:
                 g._ts_values = (
                     ImmutableMultiDict(request.json)
                     if request.is_json
-                    else request.values
+                    else CombinedMultiDict([request.values, request.files])
                 )
             return g._ts_values
 
@@ -156,13 +188,31 @@ class Api:
             values = getvalues()
             return t(values.get(name)) if name in values else MISSING
 
-        def cvt(name, t):
-            if issubclass(t, BaseModel):
-                convert = converter(t)
-                self.dataclasses.add(t)
+        def getlistvalue(name, t, arg):
+            values = getvalues()
+            ret = values.getlist(name)
+            # catch ValueError?
+            return t(arg(v) for v in ret)
+
+        def cvt(name, typ):
+            if hasattr(typ, "__args__"):
+                # e.g. list[int]
+                if len(typ.__args__) > 1:
+                    raise ValueError(f"can't do multi arguments {name}")
+                arg = typ.__args__[0]
+                if arg == FileStorage:
+                    arg = lambda v: v
+
+                cargs[name] = lambda: getlistvalue(name, typ, arg)
+
+            elif issubclass(typ, BaseModel):
+                convert = converter(typ)
+                self.dataclasses.add(typ)
                 cargs[name] = lambda: convert(getvalues())
             else:
-                cargs[name] = lambda: getvalue(name, t)
+                if typ == FileStorage:
+                    typ = lambda v: v
+                cargs[name] = lambda: getvalue(name, typ)
 
         for name, t in hints.items():
             if name == "return":
@@ -170,9 +220,11 @@ class Api:
             cvt(name, t)
 
         asjson = "return" in hints and issubclass(hints["return"], BaseModel)
+        if asjson:
+            self.dataclasses.add(hints["return"])
 
         @wraps(func)
-        def myfunc(*args, **kwargs):
+        def api_func(*args, **kwargs):
             args = {}
             try:
                 for name, cvt in cargs.items():
@@ -183,6 +235,10 @@ class Api:
                 kwargs.update(args)
                 ret = func(**kwargs)
                 if asjson:
+                    if not isinstance(ret, BaseModel):
+                        raise ValueError(
+                            f"type signature for {func.__name__} returns a pydantic instance, but we have {ret}",
+                        )
                     ret = make_response(ret.json())
                     ret.headers["Content-Type"] = "application/json"
                 return ret
@@ -191,9 +247,9 @@ class Api:
                 ret.headers["Content-Type"] = "application/json"
                 return ret
 
-        return myfunc
+        return api_func  # type: ignore
 
-    def to_ts(self, name: str = "App"):
+    def to_ts(self, name: str = "App") -> None:
         seen: set[str] = set()
         for model in self.dataclasses:
             print(to_ts(model, seen))

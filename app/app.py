@@ -1,29 +1,48 @@
 from __future__ import annotations
 
+from datetime import date  # noqa:
+
 from flask import Flask
-from flask import jsonify
+from flask import make_response
 from flask import render_template
+from flask import Response
 from pydantic import BaseModel
 from pydantic import Field
+from werkzeug.datastructures import FileStorage
 
 from flask_typescript.api import Api
+
+
+class Arg5(BaseModel):
+    query: str
 
 
 class Arg(BaseModel):
     query: str
     selected: list[int]
     doit: bool = False
+    date: date
+    extra: Arg5
     checked: list[str] = Field(default_factory=lambda: ["aa"])
 
 
-class Arg2(BaseModel):
-    arg: list[Arg]
-    stuff: str = "aa"
+class Arg3(BaseModel):
+    selected: list[int]
+
+
+class Ret1(BaseModel):
+    val: list[str]
+    res: str
+
+
+class Json(BaseModel):
+    a: int
+    b: int
 
 
 app = Flask(__name__)
 
-api = Api()
+api = Api("Base")
 
 
 @app.get("/")
@@ -31,37 +50,36 @@ def index():
     return render_template("index.html")
 
 
-@app.post("/bb")
+@app.post("/aaa")
 @api
-def bbb(arg2: Arg2, extra: int = 1) -> Arg:
-    return arg2.arg[0]
+def aaa(arg: Arg, extra: int = 1) -> Arg3:
+    print(arg, extra)
+    return Arg3(selected=arg.selected * extra)
 
 
-@app.post("/aa")
+@app.post("/filestorage")
 @api
-def aaa(arg: Arg, extra: int = 1) -> Arg:
+def filestorage(val: list[int], myfiles: list[FileStorage]) -> Ret1:
+    for f in myfiles:
+        print(f.filename, f.content_length, f.content_type)
+    return Ret1(
+        val=[str(v * 4) for v in val],
+        res=b"---".join(m.read() for m in myfiles),
+    )
+
+
+@app.get("/extra/<int:extra>")
+@api
+def extra(arg: Arg, extra: int) -> Response:
     print(arg, extra)
     arg.selected = arg.selected * extra
-    return arg
-
-
-@app.get("/my/<int:extra>")
-@api
-def extra(arg: Arg, extra: int):
-    print(arg, extra)
-    arg.selected = arg.selected * extra
-    return arg.json(), 200, {"Content-Type": "application/json"}
-
-
-@app.get("/my2/<int:extra>")
-def extra2(extra: int):
-    print(extra)
-    return jsonify(dict(extra=extra))
+    return make_response(arg.json(), 200, {"Content-Type": "application/json"})
 
 
 @app.post("/json")
-def json():
-    return jsonify({"a": 1, "b": 2})
+@api
+def json() -> Json:
+    return Json(a=1, b=22)
 
 
 api.init_app(app)

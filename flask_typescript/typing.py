@@ -18,7 +18,6 @@ from typing import cast
 from typing import ForwardRef
 from typing import get_type_hints
 from typing import Iterator
-from typing import NamedTuple
 from typing import Sequence
 from typing import Type
 from typing import Union
@@ -27,9 +26,12 @@ from pydantic import BaseModel
 from werkzeug.datastructures import FileStorage
 
 
-# from typeguard import is_typeddict
 INDENT = "    "
 NL = "\n"
+
+TSTypeable = Union[Type[Any], Callable[..., Any]]
+
+TSThing = Union["TSFunction", "TSInterface"]
 
 
 def is_dataclass_instance(obj: Any) -> bool:
@@ -83,18 +85,14 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
     }
 
 
-TSTypeable = Union[Type[Any], Callable[..., Any]]
-
-TSThing = Union["TSFunction", "TSInterface"]
-
-
 def is_typeddict(o):
     from typing import _TypedDictMeta
 
     return isinstance(o, _TypedDictMeta)
 
 
-class Annotation(NamedTuple):
+@dataclass
+class Annotation:
     name: str
     type: type[Any]
     default: Any
@@ -148,7 +146,6 @@ def get_annotations(
 class TSField:
     name: str
     type: str
-    # is_dataclass: bool = False
     requires_post: bool = False  # e.g. for FileStorage
     default: str | None = None
     colon: str = ": "
@@ -186,7 +183,7 @@ class TSField:
         return self.to_ts()
 
     def is_typed(self) -> bool:
-        return self.type != "any"
+        return self.type not in {"any", "unknown"}
 
 
 @dataclass
@@ -282,7 +279,10 @@ class TSFunction:
         return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
 
     def is_typed(self) -> bool:
-        return all(f.is_typed() for f in self.args) and self.returntype != "any"
+        return all(f.is_typed() for f in self.args) and self.returntype not in {
+            "any",
+            "unknown",
+        }
 
     @property
     def async_returntype(self) -> str:

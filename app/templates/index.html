@@ -2,14 +2,18 @@
 <html>
 
 <head>
+    <title>Index</title>
 </head>
 
 <body>
 
     <form id="myform" method='post' action="{{url_for('aaa')}}">
         <button type="submit">Submit</button>
+        Simple text
         query: <input type="text" name="query" value="c" />
+        boolean
         doit: <input type="checkbox" name="doit" />
+        list of numbers
         selected: <select multiple name="selected">
             <option selected>1</option>
             <option>2</option>
@@ -17,13 +21,32 @@
             <option>4</option>
         </select>
         extra: <input type="number" name="extra" value="5" />
+        another form of list
         checked:
-        a<input type="checkbox" name="checked" value="a">
-        b<input type="checkbox" name="checked" value="b">
-        c<input type="checkbox" name="checked" value="c">
+        a <input type="checkbox" name="checked" value="a">
+        b <input type="checkbox" name="checked" value="b">
+        c <input type="checkbox" name="checked" value="c">
+        <br />
+        date: <input type="date" name="date" value="2000-01-10" />
+        extra.query: <input type="text" name="extra.query" value="query" />
     </form>
-    <div id="result"></div>
+    <pre id="result"></pre>
     <button id="json1">test</button>
+    <br />
+    Test of file upload...
+    <code>async filestorage(val:number[], myfiles:File[]): type Ret1 = { val:string[], res:str }</code>
+    <form id="filestorage" method='post' action="{{url_for('filestorage')}}" enctype="multipart/form-data">
+        <button type="submit">Submit</button>
+
+        val: <select multiple name="val">
+            <option selected>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+        </select>
+        myfiles: <input type="file" name="myfiles" multiple />
+
+    </form>
 </body>
 <script>
     {% include "index.js" %}
