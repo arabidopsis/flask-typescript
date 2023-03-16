@@ -5,6 +5,7 @@ from datetime import date  # noqa:
 from flask import Flask
 from flask import make_response
 from flask import render_template
+from flask import request
 from flask import Response
 from pydantic import BaseModel
 from pydantic import Field
@@ -53,8 +54,15 @@ def index():
 @app.post("/aaa")
 @api
 def aaa(arg: Arg, extra: int = 1) -> Arg3:
+    print(request.headers)
     print(arg, extra)
     return Arg3(selected=arg.selected * extra)
+
+
+@app.get("/qqq")
+@api
+def qqq(a: int, b: int = 5) -> Arg5:
+    return Arg5(query=f"{a}-{b}")
 
 
 @app.post("/filestorage")

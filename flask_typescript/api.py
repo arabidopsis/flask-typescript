@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
+from typing import Iterator
 
 from flask import Flask
 from flask import g
+from flask import jsonify
 from flask import make_response
 from flask import request
 from pydantic import BaseModel
@@ -22,10 +25,11 @@ from .typing import TSField
 from .typing import TSInterface
 
 
-def converter(model: type[BaseModel]) -> Callable[[ImmutableMultiDict], BaseModel]:
-    schema = model.schema()
-
-    cvt = convert_from_schema(schema)
+def converter(
+    model: type[BaseModel],
+    prefix: str = "",
+) -> Callable[[ImmutableMultiDict], BaseModel]:
+    cvt = convert_from_schema(model.schema(), prefix)
 
     def convert(values: ImmutableMultiDict) -> BaseModel:
         return model(**cvt(values))
@@ -48,11 +52,11 @@ def convert_from_schema(
     def getval(name: str, values: ImmutableMultiDict, hasdefault: bool):
         return values.get(prefix + name, MISSING)
 
-    def getter(d):
-        def get(name, values: ImmutableMultiDict, hasdefault: bool):
+    def mkconvert(d):
+        def convert(name, values: ImmutableMultiDict, hasdefault: bool):
             return d(values)
 
-        return get
+        return convert
 
     required = set(schema.get("required", []))
 
@@ -61,7 +65,7 @@ def convert_from_schema(
         if "$ref" in p:
             mname = schema["definitions"][getname(p["$ref"])]
             d = convert_from_schema(mname, prefix=f"{prefix}{name}.")
-            ret[name] = getter(d), hasdefault
+            ret[name] = mkconvert(d), hasdefault
             continue
 
         typ = p["type"]
@@ -154,7 +158,14 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
     return "\n".join(out)
 
 
-MISSING = object()
+def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+    """flatten a nested dictionary into a top level dictionary with "dotted" keys"""
+    for key, val in json.items():
+        if isinstance(val, dict):
+            for k, v in flatten(val):
+                yield f"{key}.{k}", v
+        else:
+            yield key, val
 
 
 class Api:
@@ -175,26 +186,26 @@ class Api:
         hints = get_type_hints(func)
         cargs = {}
 
-        def getvalues():
+        def get_req_values():
             if not hasattr(g, "_ts_values"):
                 g._ts_values = (
-                    ImmutableMultiDict(request.json)
+                    ImmutableMultiDict(dict(flatten(request.json)))
                     if request.is_json
                     else CombinedMultiDict([request.values, request.files])
                 )
             return g._ts_values
 
-        def getvalue(name, t):
-            values = getvalues()
+        def getvalue(name: str, t: type[Any]) -> Any:
+            values = get_req_values()
             return t(values.get(name)) if name in values else MISSING
 
-        def getlistvalue(name, t, arg):
-            values = getvalues()
+        def getlistvalue(name: str, t: type[Any], arg: type[Any]) -> Any:
+            values = get_req_values()
             ret = values.getlist(name)
             # catch ValueError?
             return t(arg(v) for v in ret)
 
-        def cvt(name, typ):
+        def cvt(name: str, typ: type[Any]) -> None:
             if hasattr(typ, "__args__"):
                 # e.g. list[int]
                 if len(typ.__args__) > 1:
@@ -208,11 +219,18 @@ class Api:
             elif issubclass(typ, BaseModel):
                 convert = converter(typ)
                 self.dataclasses.add(typ)
-                cargs[name] = lambda: convert(getvalues())
+                cargs[name] = lambda: convert(get_req_values())
             else:
                 if typ == FileStorage:
-                    typ = lambda v: v
+                    typ = lambda v: v  # type: ignore
                 cargs[name] = lambda: getvalue(name, typ)
+
+        # npy = 0
+        # for name, t in hints.items():
+        #     if name == "return":
+        #         continue
+        #     if issubclass(t, BaseModel):
+        #         npy +=1
 
         for name, t in hints.items():
             if name == "return":
@@ -223,6 +241,9 @@ class Api:
         if asjson:
             self.dataclasses.add(hints["return"])
 
+        del hints
+        del ts
+
         @wraps(func)
         def api_func(*args, **kwargs):
             args = {}
@@ -231,7 +252,6 @@ class Api:
                     v = cvt()
                     if v is not MISSING:
                         args[name] = v
-
                 kwargs.update(args)
                 ret = func(**kwargs)
                 if asjson:
@@ -244,6 +264,11 @@ class Api:
                 return ret
             except ValidationError as e:
                 ret = make_response(e.json(), 400)
+                ret.headers["Content-Type"] = "application/json"
+                return ret
+            except ValueError as e:
+                ret = jsonify(dict(status="failed", msg=str(e)))
+                ret.status_code = 500
                 ret.headers["Content-Type"] = "application/json"
                 return ret
 
