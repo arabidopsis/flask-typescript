@@ -47,7 +47,6 @@
         const json = await resp.json()
         console.log(resp.ok, json, typeof json)
         result1.textContent = JSON.stringify(json)
-        //await getit(form.action, new FormData(form))
     })
 })();
 

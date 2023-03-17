@@ -23,8 +23,8 @@ class Arg(BaseModel):
     selected: list[int]
     doit: bool = False  # unchecked checkboxes are not sent so default to False
     date: date
-    extra: Arg5  # name="extra.query"
     val: float
+    extra: Arg5  # name="extra.query"
     checked: list[str] = Field(default_factory=lambda: ["a"])
 
 

@@ -21,28 +21,53 @@
         pre {
             color: brown;
         }
+
+        input:invalid,
+        select:invalid {
+            border: 2px dashed red;
+        }
+
+        input:invalid:required,
+        select:invalid:required {
+            background-image: linear-gradient(to right, pink, lightgreen);
+        }
+
+        input:valid,
+        select:valid {
+            border: 2px solid black;
+        }
+
+        fieldset {
+            border-radius: 1em;
+            border-color: gray;
+        }
     </style>
 </head>
 
 <body>
     <h2>Tests of pydantic for Flask</h2>
 
+    <a href="https://developer.mozilla.org/en-US/docs/Learn/Forms">MDN notes on forms</a>
+    <hr />
     <form id="myform" method='post' action="{{url_for('full')}}">
         <button type="submit">Submit</button>
         <br />
         Simple text
-        <dfn>query</dfn> <code>str</code>: <input type="text" name="query" value="c" />
+        <dfn>query</dfn> <code>str</code>: <input type="text" name="query" value="c" required />
         <br />
         boolean
         <dfn>doit</dfn> <code>bool</code>: <input type="checkbox" name="doit" />
         <br />
-        list of numbers
-        <dfn>selected</dfn> <code>list[int]</code>: <select multiple name="selected" required>
-            <option selected>1</option>
-            <option>2</option>
-            <option>3</option>
-            <option>4</option>
-        </select>
+        <fieldset>
+            <legend>Some numbers</legend>
+            list of numbers
+            <dfn>selected</dfn> <code>list[int]</code>: <select multiple name="selected" required>
+                <option selected>1</option>
+                <option>2</option>
+                <option>3</option>
+                <option>4</option>
+            </select>
+        </fieldset>
         <br />
         <dfn>extra</dfn> <code>int</code>: <input type="number" name="extra" value="5" />
         <br />

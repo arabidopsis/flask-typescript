@@ -356,7 +356,6 @@ class TSBuilder:
                 return self.type_to_str(typ)
         raise TypeError(f'unknown ForwardRef "{type_name}"')
 
-    # pylint: disable=too-many-return-statements
     def type_to_str(self, typ: type[Any], is_arg: bool = False) -> str:
         if is_dataclass_type(typ) or is_pydantic(typ):
             if (
