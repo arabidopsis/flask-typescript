@@ -1,6 +1,7 @@
 (function () {
     const form = document.getElementById('myform')
     const result = document.getElementById('result')
+    const json_result = document.getElementById('result-json')
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault()
@@ -16,7 +17,9 @@
         try {
             const resp = await fetch(form.action, { method: 'post', body: formData })
             const json = await resp.json()
-            console.log(resp.ok, json)
+            json_result.textContent = JSON.stringify(json)
+            console.log(resp.ok, json, new Date(json.date))
+
             // as json
             const obj = JSON.stringify(await serializeFormData(formData))
             const resp1 = await fetch(form.action, {
@@ -38,16 +41,19 @@
 
 
     const json1 = document.getElementById('json1')
+    const result1 = document.getElementById('json1-result')
     json1.addEventListener('click', async (e) => {
         const resp = await fetch('/json', { method: 'post' })
         const json = await resp.json()
         console.log(resp.ok, json, typeof json)
+        result1.textContent = JSON.stringify(json)
         //await getit(form.action, new FormData(form))
     })
 })();
 
 (function () {
     const form = document.getElementById('filestorage')
+    const result = document.getElementById('filestorage-result')
 
 
     form.addEventListener('submit', async (e) => {
@@ -61,6 +67,7 @@
             const resp = await fetch(form.action, { method: 'post', body: formData })
             const json = await resp.json()
             console.log(resp.ok, resp.status === 200, json)
+            result.textContent = JSON.stringify(json)
         } catch (e) {
             console.log('err', e)
         }

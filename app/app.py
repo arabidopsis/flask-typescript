@@ -21,10 +21,11 @@ class Arg5(BaseModel):
 class Arg(BaseModel):
     query: str
     selected: list[int]
-    doit: bool = False
+    doit: bool = False  # unchecked checkboxes are not sent so default to False
     date: date
-    extra: Arg5
-    checked: list[str] = Field(default_factory=lambda: ["aa"])
+    extra: Arg5  # name="extra.query"
+    val: float
+    checked: list[str] = Field(default_factory=lambda: ["a"])
 
 
 class Arg3(BaseModel):
@@ -51,12 +52,14 @@ def index():
     return render_template("index.html")
 
 
-@app.post("/aaa")
+@app.post("/full")
 @api
-def aaa(arg: Arg, extra: int = 1) -> Arg3:
+def full(arg: Arg, extra: int = 1) -> Arg:
     print(request.headers)
     print(arg, extra)
-    return Arg3(selected=arg.selected * extra)
+    arg.selected = arg.selected * extra
+    arg.date = arg.date.today()
+    return arg
 
 
 @app.get("/qqq")

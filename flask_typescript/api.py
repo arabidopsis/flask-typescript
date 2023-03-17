@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
@@ -14,6 +15,7 @@ from flask import g
 from flask import jsonify
 from flask import make_response
 from flask import request
+from flask import Response
 from pydantic import BaseModel
 from pydantic import ValidationError
 from werkzeug.datastructures import CombinedMultiDict
@@ -41,8 +43,6 @@ def convert_from_schema(
     schema: dict[str, Any],
     prefix="",
 ) -> Callable[[ImmutableMultiDict], dict[str, Any]]:
-    ret = {}
-
     def getlist(name: str, values: ImmutableMultiDict, hasdefault: bool):
         name = prefix + name
         if hasdefault and name not in values:
@@ -59,6 +59,7 @@ def convert_from_schema(
         return convert
 
     required = set(schema.get("required", []))
+    ret = {}
 
     for name, p in schema["properties"].items():
         hasdefault = name not in required
@@ -175,10 +176,12 @@ class Api:
         self.funcs: list[TSField] = []
         self.name = name
 
-    def __call__(self, func):
-        return self.api(func)
+    def __call__(self, func=None, *, err=None):
+        if func is None:
+            return lambda func: self.api(func, err=err)
+        return self.api(func, err=err)
 
-    def api(self, func):
+    def api(self, func, *, err=None):
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
@@ -263,10 +266,13 @@ class Api:
                     ret.headers["Content-Type"] = "application/json"
                 return ret
             except ValidationError as e:
-                ret = make_response(e.json(), 400)
-                ret.headers["Content-Type"] = "application/json"
-                return ret
+                if err is not None:
+                    return err(e)
+                return self.err(e)
+
             except ValueError as e:
+                if err is not None:
+                    return err(e)
                 ret = jsonify(dict(status="failed", msg=str(e)))
                 ret.status_code = 500
                 ret.headers["Content-Type"] = "application/json"
@@ -274,17 +280,22 @@ class Api:
 
         return api_func  # type: ignore
 
-    def to_ts(self, name: str = "App") -> None:
+    def err(self, e: ValidationError) -> Response:
+        ret = make_response(e.json(), 400)
+        ret.headers["Content-Type"] = "application/json"
+        return ret
+
+    def to_ts(self, name: str = "App", file=sys.stdout) -> None:
         seen: set[str] = set()
         for model in self.dataclasses:
-            print(to_ts(model, seen))
+            print(to_ts(model, seen), file=file)
         interface = TSInterface(name=name, fields=self.funcs)
-        print(interface)
+        print(interface, file=file)
         # for build_func in self.builder.process_seen():
         #     print(build_func())
 
-    def show_api(self, app: Flask) -> None:
-        self.to_ts(self.name or app.name.split(".")[-1].title())
+    def show_api(self, app: Flask, file=sys.stdout) -> None:
+        self.to_ts(self.name or app.name.split(".")[-1].title(), file=sys.stdout)
 
     def init_app(self, app: Flask) -> None:
         if "flask-typescript" not in app.extensions:

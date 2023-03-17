@@ -3,50 +3,84 @@
 
 <head>
     <title>Index</title>
+    <style>
+        body {
+            height: 100%;
+            width: 60%;
+            margin-left: 20%
+        }
+
+        code {
+            color: #ff2299
+        }
+
+        dfn {
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        pre {
+            color: brown;
+        }
+    </style>
 </head>
 
 <body>
+    <h2>Tests of pydantic for Flask</h2>
 
-    <form id="myform" method='post' action="{{url_for('aaa')}}">
+    <form id="myform" method='post' action="{{url_for('full')}}">
         <button type="submit">Submit</button>
-        Simple text
-        query: <input type="text" name="query" value="c" />
-        boolean
-        doit: <input type="checkbox" name="doit" />
-        list of numbers
-        selected: <select multiple name="selected">
-            <option selected>a</option>
-            <option>2</option>
-            <option>3</option>
-            <option>4</option>
-        </select>
-        extra: <input type="number" name="extra" value="5" />
-        another form of list
-        checked:
-        a <input type="checkbox" name="checked" value="a">
-        b <input type="checkbox" name="checked" value="b">
-        c <input type="checkbox" name="checked" value="c">
         <br />
-        date: <input type="date" name="date" value="2000-01-10" />
-        extra.query: <input type="text" name="extra.query" value="query" />
-    </form>
-    <pre id="result"></pre>
-    <button id="json1">test</button>
-    <br />
-    Test of file upload...
-    <code>async filestorage(val:number[], myfiles:File[]): type Ret1 = { val:string[], res:str }</code>
-    <form id="filestorage" method='post' action="{{url_for('filestorage')}}" enctype="multipart/form-data">
-        <button type="submit">Submit</button>
-
-        val: <select multiple name="val">
+        Simple text
+        <dfn>query</dfn> <code>str</code>: <input type="text" name="query" value="c" />
+        <br />
+        boolean
+        <dfn>doit</dfn> <code>bool</code>: <input type="checkbox" name="doit" />
+        <br />
+        list of numbers
+        <dfn>selected</dfn> <code>list[int]</code>: <select multiple name="selected" required>
             <option selected>1</option>
             <option>2</option>
             <option>3</option>
             <option>4</option>
         </select>
-        myfiles: <input type="file" name="myfiles" multiple />
+        <br />
+        <dfn>extra</dfn> <code>int</code>: <input type="number" name="extra" value="5" />
+        <br />
+        <dfn>val</dfn> <code>float</code>: <input type="number" name="val" value="5" step="0.1" />
+        <br />
+        another form of list
+        <dfn>checked</dfn> <code>list[str]</code>:
+        a <input type="checkbox" name="checked" value="a">
+        b <input type="checkbox" name="checked" value="b">
+        c <input type="checkbox" name="checked" value="c">
+        <br />
+        <dfn>date</dfn> <code>datetime.date</code>: <input type="date" name="date" value="2000-01-10" />
+        <br />
+        <dfn>extra.query</dfn> <code>str</code>: <input type="text" name="extra.query" value="query" />
+    </form>
+    <pre id="result"></pre>
+    <pre id="result-json"></pre>
+    <hr />
+    <button id="json1">test</button>
+    <pre id="json1-result"></pre>
+    <hr />
+
+    Test of file upload...
+    <code>async filestorage(val:number[], myfiles:File[]): type Ret1 = { val:string[], res:str }</code>
+    <form id="filestorage" method='post' action="{{url_for('filestorage')}}" enctype="multipart/form-data">
+        <button type="submit">Submit</button>
+        <br />
+        <dfn>val</dfn> <code>list[int]</code>: <select multiple name="val" required>
+            <option selected>1</option>
+            <option>2</option>
+            <option>3</option>
+            <option>4</option>
+        </select>
+        <br />
+        <dfn>myfiles</dfn> <code>list[FileStorage]</code>: <input type="file" name="myfiles" multiple required />
 
     </form>
+    <pre id="filestorage-result"></pre>
 </body>
 <script>
     {% include "index.js" %}
