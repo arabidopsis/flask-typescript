@@ -192,12 +192,12 @@ class Api:
         self.funcs: list[TSField] = []
         self.name = name
 
-    def __call__(self, func=None, *, err=None):
+    def __call__(self, func=None, *, onexc=None):
         if func is None:
-            return lambda func: self.api(func, err=err)
-        return self.api(func, err=err)
+            return lambda func: self.api(func, onexc=onexc)
+        return self.api(func, onexc=onexc)
 
-    def api(self, func, *, err=None):
+    def api(self, func, *, onexc=None):
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
@@ -288,18 +288,18 @@ class Api:
                     ret.headers["Content-Type"] = "application/json"
                 return ret
             except ValidationError as e:
-                if err is not None:
-                    return err(e)
-                return self.err(e)
+                if onexc is not None:
+                    return onexc(e)
+                return self.onexc(e)
 
             except ValueError as e:
-                if err is not None:
-                    return err(e)
-                return self.err(VE(msg=str(e)))
+                if onexc is not None:
+                    return onexc(e)
+                return self.onexc(VE(msg=str(e)))
 
         return api_func  # type: ignore
 
-    def err(self, e: ValidationError | VE) -> Response:
+    def onexc(self, e: ValidationError | VE) -> Response:
         ret = make_response(e.json(), 400)
         ret.headers["Content-Type"] = "application/json"
         return ret

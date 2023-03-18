@@ -25,7 +25,7 @@ class Arg(BaseModel):
     date: date
     val: float
     extra: Arg5  # name="extra.query"
-    checked: list[str] = Field(default_factory=lambda: ["a"])
+    checked: list[str] = Field(default_factory=lambda: ["aaa"])
 
 
 class Arg3(BaseModel):
@@ -52,8 +52,13 @@ def index():
     return render_template("index.html")
 
 
+def onexc(e) -> Response:
+    print("HERE", e)
+    return api.onexc(e)
+
+
 @app.post("/full")
-@api
+@api(onexc=onexc)
 def full(arg: Arg, extra: int = 1) -> Arg:
     print(request.headers)
     print(arg, extra)

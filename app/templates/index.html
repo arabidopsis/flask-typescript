@@ -78,6 +78,8 @@
         a <input type="checkbox" name="checked" value="a">
         b <input type="checkbox" name="checked" value="b">
         c <input type="checkbox" name="checked" value="c">
+        Can't set required (at least one) on this form of list so might have
+        to use javascript <code>formData.has('checked')</code>
         <br />
         <dfn>date</dfn> <code>datetime.date</code>: <input type="date" name="date" value="2000-01-10" />
         <br />
@@ -102,7 +104,8 @@
             <option>4</option>
         </select>
         <br />
-        <dfn>myfiles</dfn> <code>list[FileStorage]</code>: <input type="file" name="myfiles" multiple required />
+        <label><dfn>myfiles</dfn> <code>list[FileStorage]</code>: <input type="file" name="myfiles" multiple
+                required /></label>
 
     </form>
     <pre id="filestorage-result"></pre>

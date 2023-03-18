@@ -4,7 +4,6 @@
     const json_result = document.getElementById('result-json')
 
     form.addEventListener('submit', async (e) => {
-        e.preventDefault()
         // e.stopPropagation()
         result.textContent = ''
         const formData = new FormData(form)
@@ -14,6 +13,7 @@
 
         console.log('any checked?', formData.has('checked'))
 
+        e.preventDefault()
         try {
             const resp = await fetch(form.action, { method: 'post', body: formData })
             const json = await resp.json()
@@ -85,7 +85,7 @@ async function serializeFormData(formData) {
         return value
     }
 
-    for (let [key, value] of formData.entries()) {
+    for (let [key, value] of formData) {
         const o = obj[key]
         value = await cvt(value)
         if (o === undefined) {
