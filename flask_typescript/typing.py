@@ -9,6 +9,7 @@ from dataclasses import fields
 from dataclasses import is_dataclass
 from dataclasses import MISSING
 from dataclasses import replace
+from datetime import date
 from importlib import import_module
 from inspect import signature
 from types import FunctionType
@@ -18,7 +19,6 @@ from typing import cast
 from typing import ForwardRef
 from typing import get_type_hints
 from typing import Iterator
-from typing import Sequence
 from typing import Type
 from typing import Union
 
@@ -42,8 +42,14 @@ def is_dataclass_type(obj: Any) -> bool:
     return is_dataclass(obj) and isinstance(obj, type)
 
 
-def is_pydantic(typ: type[Any]) -> bool:
+def is_pydantic_type(typ: type[Any]) -> bool:
     return isinstance(typ, type) and issubclass(typ, BaseModel)
+
+
+def is_typeddict(o):
+    from typing import _TypedDictMeta
+
+    return isinstance(o, _TypedDictMeta)
 
 
 def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
@@ -64,8 +70,8 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     }
 
 
-def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
-    if not is_pydantic(cls):
+def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
+    if not is_pydantic_type(cls):
         raise TypeError(
             f"{cls} is not a subclass of pydantic.BaseModel",
         )
@@ -85,10 +91,25 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
     }
 
 
-def is_typeddict(o):
-    from typing import _TypedDictMeta
+def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
+    # using schema doesn't give any defaults from Field(...) types
+    if not is_pydantic_type(cls):
+        raise TypeError(
+            f"{cls} is not a subclass of pydantic.BaseModel",
+        )
 
-    return isinstance(o, _TypedDictMeta)
+    def get_default(f) -> Any:
+        r = f.get_default()
+        if r is None and not f.allow_none:
+            return MISSING
+        return r
+
+    return {
+        name: d
+        for name, f in cls.__fields__.items()
+        for d in [get_default(f)]
+        if d is not MISSING
+    }
 
 
 @dataclass
@@ -129,7 +150,7 @@ def get_annotations(
     elif is_typeddict(cls_or_func):
         defaults = {}
         d = get_type_hints(cls_or_func, localns=ns)
-    elif is_pydantic(cls_or_func):  # type: ignore
+    elif is_pydantic_type(cls_or_func):  # type: ignore
         defaults = get_py_defaults(cast(Type[Any], cls_or_func))
         d = get_type_hints(cls_or_func, localns=ns)
     else:
@@ -300,17 +321,8 @@ DEFAULTS: dict[type[Any], str] = {
     bool: "boolean",
     decimal.Decimal: "number",
     FileStorage: "File",
+    date: "string",
 }
-
-
-class BuildFunc:
-    def __init__(self, builder: Callable[[], TSThing], name: str, module: str):
-        self.name = name
-        self.module = module
-        self.builder = builder
-
-    def __call__(self) -> TSThing:
-        return self.builder()
 
 
 class TSBuilder:
@@ -318,16 +330,17 @@ class TSBuilder:
 
     def __init__(
         self,
-        variables: Sequence[str] | None = None,  # url_default variables
         ns: Any | None = None,  # local namespace for typing.get_type_hints
     ):
         self.build_stack: list[TSTypeable] = []
         self.seen: dict[str, str] = {}
-        self.variables: set[str] | None = set(variables) if variables else None
         self.ns = ns
         self.built: set[str] = set()
 
-    def process_seen(self, seen: dict[str, str] | None = None) -> Iterator[BuildFunc]:
+    def process_seen(
+        self,
+        seen: dict[str, str] | None = None,
+    ) -> Iterator[Callable[[], TSThing]]:
         if seen is None:
             seen = {}
         seen.update(self.seen)
@@ -336,12 +349,12 @@ class TSBuilder:
         for name, module in seen.items():
             yield self.create_builder(name, module)
 
-    def create_builder(self, name: str, module: str) -> BuildFunc:
+    def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
         def build_func():
             m = import_module(module)
             return self.get_type_ts(getattr(m, name))
 
-        return BuildFunc(build_func, name, module)
+        return build_func
 
     def __call__(self, o: TSTypeable) -> TSThing:
         return self.get_type_ts(o)
@@ -357,7 +370,7 @@ class TSBuilder:
         raise TypeError(f'unknown ForwardRef "{type_name}"')
 
     def type_to_str(self, typ: type[Any], is_arg: bool = False) -> str:
-        if is_dataclass_type(typ) or is_pydantic(typ):
+        if is_dataclass_type(typ) or is_pydantic_type(typ):
             if (
                 self.is_being_built(typ)
                 or is_arg
@@ -436,7 +449,6 @@ class TSBuilder:
             yield TSField(
                 name=name,
                 type=ts_type_as_str,
-                # is_dataclass=is_dataclass(annotation.type),
                 requires_post=annotation.requires_post,
                 default=self.ts_repr(annotation.default)
                 if annotation.has_default
@@ -457,15 +469,12 @@ class TSBuilder:
         ft = list(self.get_field_types(func, is_arg=True))
         args = [f for f in ft if f.name != "return"]
         rt = [f for f in ft if f.name == "return"]
-        if self.variables is not None:
-            # pylint: disable=unsupported-membership-test
-            args = [f for f in args if f.name not in self.variables]
         if rt:
             returntype = rt[0].type
             if returntype == "null":  # type(None) for a return type should mean void
                 returntype = "void"
         else:
-            returntype = "any"
+            returntype = "unknown"
 
         return TSFunction(name=func.__name__, args=args, returntype=returntype)
 

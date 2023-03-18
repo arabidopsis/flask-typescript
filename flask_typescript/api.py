@@ -181,16 +181,35 @@ def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
             yield key, val
 
 
+def funcname(func):
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__()
+
+    return func.__name__
+
+
 class VE(BaseModel):
+    status: str
     msg: str
 
 
+def get_req_values():
+    if not hasattr(g, "_ts_values"):
+        g._ts_values = (
+            ImmutableMultiDict(dict(flatten(request.json)))
+            if request.is_json
+            else CombinedMultiDict([request.values, request.files])
+        )
+    return g._ts_values
+
+
 class Api:
+    builder = TSBuilder()
+
     def __init__(self, name: str | None = None):
-        self.dataclasses: set[type[BaseModel]] = set()
-        self.builder = TSBuilder()
-        self.funcs: list[TSField] = []
         self.name = name
+        self.dataclasses: set[type[BaseModel]] = set()
+        self.funcs: list[TSField] = []
 
     def __call__(self, func=None, *, onexc=None):
         if func is None:
@@ -209,15 +228,6 @@ class Api:
         }
         cargs = {}
 
-        def get_req_values():
-            if not hasattr(g, "_ts_values"):
-                g._ts_values = (
-                    ImmutableMultiDict(dict(flatten(request.json)))
-                    if request.is_json
-                    else CombinedMultiDict([request.values, request.files])
-                )
-            return g._ts_values
-
         def getvalue(name: str, t: type[Any]) -> Any:
             values = get_req_values()
             return t(values.get(name)) if name in values else MISSING
@@ -230,37 +240,38 @@ class Api:
             # catch ValueError?
             return t(arg(v) for v in ret)
 
-        def cvt(name: str, typ: type[Any]) -> None:
+        def cvt(name: str, typ: type[Any]) -> Callable[[], Any]:
             if hasattr(typ, "__args__"):
                 # e.g. list[int]
                 if len(typ.__args__) > 1:
-                    raise ValueError(f"can't do multi arguments {name}")
+                    raise ValueError(f"can't do multi arguments {name}[{typ}]")
                 arg = typ.__args__[0]
+                # e.g. arg == int so int(value) acts as converter
                 if arg == FileStorage:
                     arg = lambda v: v
 
-                cargs[name] = lambda: getlistvalue(name, typ, arg)
+                return lambda: getlistvalue(name, typ, arg)
 
             elif issubclass(typ, BaseModel):
                 convert = converter(typ)
                 self.dataclasses.add(typ)
-                cargs[name] = lambda: convert(get_req_values())
+                return lambda: convert(get_req_values())
             else:
                 if typ == FileStorage:
                     typ = lambda v: v  # type: ignore
-                cargs[name] = lambda: getvalue(name, typ)
+                return lambda: getvalue(name, typ)
 
         # npy = 0
         # for name, t in hints.items():
         #     if name == "return":
         #         continue
         #     if issubclass(t, BaseModel):
-        #         npy +=1
+        #         npy += 1
 
         for name, t in hints.items():
             if name == "return":
                 continue
-            cvt(name, t)
+            cargs[name] = cvt(name, t)
 
         asjson = "return" in hints and issubclass(hints["return"], BaseModel)
         if asjson:
@@ -268,34 +279,38 @@ class Api:
 
         del hints
         del ts
+        del sig
 
         @wraps(func)
-        def api_func(*args, **kwargs):
+        def api_func(*_args, **kwargs):
             args = {}
             try:
                 for name, cvt in cargs.items():
                     v = cvt()
                     if v is not MISSING:
                         args[name] = v
-                kwargs.update(args)
-                ret = func(**kwargs)
-                if asjson:
-                    if not isinstance(ret, BaseModel):
-                        raise ValueError(
-                            f"type signature for {func.__name__} returns a pydantic instance, but we have {ret}",
-                        )
-                    ret = make_response(ret.json())
-                    ret.headers["Content-Type"] = "application/json"
-                return ret
+
             except ValidationError as e:
                 if onexc is not None:
                     return onexc(e)
                 return self.onexc(e)
 
             except ValueError as e:
+                # FIXME!
                 if onexc is not None:
                     return onexc(e)
-                return self.onexc(VE(msg=str(e)))
+                return self.onexc(VE(status="failed", msg=str(e)))
+
+            kwargs.update(args)
+            ret = func(**kwargs)
+            if asjson:
+                if not isinstance(ret, BaseModel):
+                    raise ValueError(
+                        f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
+                    )
+                ret = make_response(ret.json())
+                ret.headers["Content-Type"] = "application/json"
+            return ret
 
         return api_func  # type: ignore
 
@@ -320,9 +335,10 @@ class Api:
         dataclasses: set[type[BaseModel]],
         file=sys.stdout,
     ) -> None:
-        seen: set[str] = set()
+        # seen: set[str] = set()
         for model in dataclasses:
-            print(to_ts(model, seen), file=file)
+            # print(to_ts(model, seen), file=file)
+            print(cls.builder(model), file=file)
 
     def show_api(self, app: Flask, file=sys.stdout) -> None:
         self.to_ts(self.name or app.name.split(".")[-1].title(), file=sys.stdout)
@@ -331,7 +347,7 @@ class Api:
         if "flask-typescript" not in app.extensions:
             app.extensions["flask-typescript"] = set()
 
-            @app.cli.command("api")
+            @app.cli.command("ts")
             @click.option(
                 "-o",
                 "--out",
