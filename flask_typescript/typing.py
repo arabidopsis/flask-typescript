@@ -34,16 +34,20 @@ TSTypeable = Union[Type[Any], Callable[..., Any]]
 TSThing = Union["TSFunction", "TSInterface"]
 
 
-def is_dataclass_instance(obj: Any) -> bool:
-    return is_dataclass(obj) and not isinstance(obj, type)
+# def is_dataclass_instance(obj: Any) -> bool:
+#     return not isinstance(obj, type) and is_dataclass(obj)
 
 
 def is_dataclass_type(obj: Any) -> bool:
-    return is_dataclass(obj) and isinstance(obj, type)
+    return isinstance(obj, type) and is_dataclass(obj)
 
 
 def is_pydantic_type(typ: type[Any]) -> bool:
     return isinstance(typ, type) and issubclass(typ, BaseModel)
+
+
+def is_file_storage(typ: type[Any]) -> bool:
+    return isinstance(typ, type) and issubclass(typ, FileStorage)
 
 
 def is_typeddict(o):
@@ -55,7 +59,7 @@ def is_typeddict(o):
 def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     if not is_dataclass_type(cls):
         raise TypeError(
-            f"{cls} is not a dataclass type instance={is_dataclass_instance(cls)}",
+            f"{cls} is not a dataclass type",
         )
 
     def get_default(f: Field) -> Any:
@@ -92,7 +96,7 @@ def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
 
 
 def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
-    # using schema doesn't give any defaults from Field(...) types
+    # using schema doesn't give any defaults from Field(default_factory...) types
     if not is_pydantic_type(cls):
         raise TypeError(
             f"{cls} is not a subclass of pydantic.BaseModel",
@@ -124,8 +128,7 @@ class Annotation:
 
     @property
     def requires_post(self) -> bool:
-        # TODO: typing.List[F]
-        return isinstance(self.type, type) and issubclass(self.type, FileStorage)
+        return is_file_storage(self.type)
 
 
 def get_annotations(
@@ -137,28 +140,23 @@ def get_annotations(
     May throw a `NameError` if annotation is only imported when
     typing.TYPE_CHECKING is True.
     """
+    d = get_type_hints(cls_or_func, localns=ns, include_extras=False)
     if isinstance(cls_or_func, FunctionType):
         sig = signature(cls_or_func)
         defaults = {
             k: v.default for k, v in sig.parameters.items() if v.default is not v.empty
         }
-        d_ = get_type_hints(cls_or_func, localns=ns)
         # add untyped parameters
-        d = {k: d_.get(k, Any) for k in sig.parameters}
-        if "return" in d_:
-            d["return"] = d_["return"]
+        d_ = {k: d.get(k, Any) for k in sig.parameters}
+        if "return" in d:
+            d_["return"] = d["return"]
+        d = d_
     elif is_typeddict(cls_or_func):
         defaults = {}
-        d = get_type_hints(cls_or_func, localns=ns)
     elif is_pydantic_type(cls_or_func):  # type: ignore
         defaults = get_py_defaults(cast(Type[Any], cls_or_func))
-        d = get_type_hints(cls_or_func, localns=ns)
     else:
         defaults = get_dc_defaults(cast(Type[Any], cls_or_func))
-        # we want the type of the field as it is on the
-        # client (browser) side e.g. bytes -> number[]
-        # d = {f.name: get_field_type(f) for f in fields(cls_or_func)}
-        d = get_type_hints(cls_or_func, localns=ns)
 
     return {k: Annotation(k, v, defaults.get(k, MISSING)) for k, v in d.items()}
 
@@ -172,15 +170,15 @@ class TSField:
     colon: str = ": "
 
     @property
-    def is_list(self):
-        self.type.endswith("[]")  # convention
+    def is_list(self) -> bool:
+        return self.type.endswith("[]")  # convention
 
     @property
-    def nested_type(self):
+    def nested_type(self) -> str:
         assert self.is_list, self
         return self.type[:-2]
 
-    def make_default(self, as_comment: bool = True):
+    def make_default(self, as_comment: bool = True) -> str:
         if as_comment:
             fmt = " /* ={} */"
         else:

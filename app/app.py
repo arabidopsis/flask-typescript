@@ -23,9 +23,14 @@ class Arg(BaseModel):
     selected: list[int]
     doit: bool = False  # unchecked checkboxes are not sent so default to False
     date: date
-    val: float
-    extra: Arg5  # name="extra.query"
-    checked: list[str] = Field(default_factory=lambda: ["aaa"])
+    val: float = Field(gt=0)  # Annotated[float,pos]
+    arg5: Arg5  # name="extra.query"
+    checked: list[str] = ["aaa"]
+
+    # @validator('val')
+    # def pos_val(cls, v):
+    #     if v < 0: raise ValueError('must be positive')
+    #     return v
 
 
 class Arg3(BaseModel):
@@ -58,7 +63,7 @@ def onexc(e) -> Response:
 
 
 @app.post("/full")
-@api(onexc=onexc)
+@api
 def full(arg: Arg, extra: int = 1) -> Arg:
     print(request.headers)
     print(arg, extra)
@@ -90,6 +95,14 @@ def extra(arg: Arg, extra: int) -> Response:
     print(arg, extra)
     arg.selected = arg.selected * extra
     return make_response(arg.json(), 200, {"Content-Type": "application/json"})
+
+
+@app.post("/arg5")
+@api
+def arg5(extra: list[Arg5]) -> Arg5:
+    print(extra)
+
+    return extra[0]
 
 
 @app.post("/json")

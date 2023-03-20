@@ -6,10 +6,10 @@ from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
 from inspect import signature
+from types import FunctionType
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
-from typing import Iterator
 
 import click
 from flask import Flask
@@ -18,7 +18,8 @@ from flask import make_response
 from flask import request
 from flask import Response
 from pydantic import BaseModel
-from pydantic import ValidationError
+from pydantic.error_wrappers import ValidationError
+from pydantic.json import pydantic_encoder
 from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import ImmutableMultiDict
@@ -28,13 +29,15 @@ from .typing import NL
 from .typing import TSBuilder
 from .typing import TSField
 from .typing import TSInterface
+from .utils import flatten
+from .utils import jquery_form
 
 
 def converter(
     model: type[BaseModel],
-    prefix: str = "",
+    prefix: list[str] | None = None,
 ) -> Callable[[ImmutableMultiDict], BaseModel]:
-    cvt = convert_from_schema(model.schema(), prefix)
+    cvt = convert_from_schema(model.schema(), prefix or [])
 
     def convert(values: ImmutableMultiDict) -> BaseModel:
         return model(**cvt(values))
@@ -44,10 +47,20 @@ def converter(
 
 def convert_from_schema(
     schema: dict[str, Any],
-    prefix="",
+    prefix: list[str],
 ) -> Callable[[ImmutableMultiDict], dict[str, Any]]:
+    def dotted_toname(name: str) -> str:
+        return ".".join(prefix + [name])
+
+    # def php_toname(name:str) -> str:
+    #     if not prefix:
+    #         return name
+    #     return prefix[0] + ''.join(f'[{s}]' for s in prefix[1:] + [name])
+
+    toname = dotted_toname
+
     def mkgetlist(name: str, hasdefault: bool):
-        name = prefix + name
+        name = toname(name)
 
         def getlist(values: ImmutableMultiDict):
             if hasdefault and name not in values:
@@ -57,7 +70,7 @@ def convert_from_schema(
         return getlist
 
     def mkgetval(name: str, hasdefault: bool):
-        name = prefix + name
+        name = toname(name)
 
         def getval(values: ImmutableMultiDict):
             return values.get(name, MISSING)
@@ -76,8 +89,9 @@ def convert_from_schema(
     for name, p in schema["properties"].items():
         hasdefault = name not in required
         if "$ref" in p:
-            schema2 = schema["definitions"][getname(p["$ref"])]
-            d = convert_from_schema(schema2, prefix=f"{prefix}{name}.")
+            loc, n = getname(p["$ref"])
+            schema2 = schema[loc][n]
+            d = convert_from_schema(schema2, prefix=prefix + [name])
             ret[name] = mkconvert(d)
             continue
 
@@ -103,8 +117,10 @@ def repr(v):
     return json.dumps(v)
 
 
-def getname(s: str) -> str:
-    return s.split("/")[-1]
+def getname(s: str) -> tuple[str, str]:
+    "#/definitions/name"
+    l, n = s.split("/")[-2:]
+    return (l, n)
 
 
 def to_ts(model: type[BaseModel], seen: set[str] | None = None) -> str:
@@ -125,7 +141,7 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
 
         def gettype(p):
             if "$ref" in p:
-                typ = getname(p["$ref"])
+                _, typ = getname(p["$ref"])
             else:
                 typ = p["type"]
             if typ == "array":
@@ -171,95 +187,114 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
     return "\n".join(out)
 
 
-def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
-    """flatten a nested dictionary into a top level dictionary with "dotted" keys"""
-    for key, val in json.items():
-        if isinstance(val, dict):
-            for k, v in flatten(val):
-                yield f"{key}.{k}", v
-        else:
-            yield key, val
-
-
-def funcname(func):
+def funcname(func: FunctionType) -> str:
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__()
 
     return func.__name__
 
 
-class VE(BaseModel):
-    status: str
-    msg: str
+class FlaskValueError(ValueError):
+    def __init__(self, exc: ValueError, loc: str, errtype: str = "unknown"):
+        super().__init__()
+        self.exc = exc
+        self.loc = loc
+        self.errtype = errtype
+
+    def json(self, *, indent: None | int | str = 2) -> str:
+        return json.dumps(self.errors(), indent=indent, default=pydantic_encoder)
+
+    def errors(self):
+        return [
+            dict(
+                loc=(self.loc,),
+                msg=str(self.exc),
+                type=f"value_error.{self.errtype}",
+            ),
+        ]
 
 
-def get_req_values():
-    if not hasattr(g, "_ts_values"):
-        g._ts_values = (
-            ImmutableMultiDict(dict(flatten(request.json)))
+def get_req_values() -> ImmutableMultiDict:
+    if not hasattr(g, "_flask_typescript"):
+        g._flask_typescript = (
+            ImmutableMultiDict(dict(flatten(request.json or {})))
             if request.is_json
-            else CombinedMultiDict([request.values, request.files])
+            else CombinedMultiDict([request.values, request.files])  # type: ignore
         )
-    return g._ts_values
+    return g._flask_typescript
 
 
 class Api:
     builder = TSBuilder()
 
-    def __init__(self, name: str | None = None):
+    def __init__(
+        self,
+        name: str,
+        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
+        *,
+        from_jquery: bool = False,
+    ):
         self.name = name
         self.dataclasses: set[type[BaseModel]] = set()
         self.funcs: list[TSField] = []
+        self._onexc = onexc
+        self.from_jquery = from_jquery
 
     def __call__(self, func=None, *, onexc=None):
         if func is None:
             return lambda func: self.api(func, onexc=onexc)
         return self.api(func, onexc=onexc)
 
-    def api(self, func, *, onexc=None):
-        ts = self.builder(func)
-        ts = replace(ts, isasync=True)
-        self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
-
-        hints = get_type_hints(func)
+    def create_api(
+        self,
+        func,
+    ) -> tuple[bool, dict[str, Callable[[ImmutableMultiDict], Any]]]:
+        hints = get_type_hints(func, include_extras=True)
         sig = signature(func)
         defaults = {
             k: v.default for k, v in sig.parameters.items() if v.default is not v.empty
         }
         cargs = {}
 
-        def getvalue(name: str, t: type[Any]) -> Any:
-            values = get_req_values()
+        def getvalue(values: ImmutableMultiDict, name: str, t: type[Any]) -> Any:
             return t(values.get(name)) if name in values else MISSING
 
-        def getlistvalue(name: str, t: type[Any], arg: type[Any]) -> Any:
-            values = get_req_values()
+        def getlistvalue(
+            values: ImmutableMultiDict,
+            name: str,
+            t: type[Any],
+            arg: type[Any],
+        ) -> Any:
             if name not in values and name in defaults:
                 return MISSING
             ret = values.getlist(name)
             # catch ValueError?
             return t(arg(v) for v in ret)
 
-        def cvt(name: str, typ: type[Any]) -> Callable[[], Any]:
+        def cvt(name: str, typ: type[Any]) -> Callable[[ImmutableMultiDict], Any]:
             if hasattr(typ, "__args__"):
                 # e.g. list[int]
                 if len(typ.__args__) > 1:
                     raise ValueError(f"can't do multi arguments {name}[{typ}]")
                 arg = typ.__args__[0]
+                if arg is Ellipsis:
+                    raise ValueError("... elipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter
+                if issubclass(arg, BaseModel):
+                    arg = converter(arg)
                 if arg == FileStorage:
                     arg = lambda v: v
 
-                return lambda: getlistvalue(name, typ, arg)
+                return lambda values: getlistvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
                 convert = converter(typ)
                 self.dataclasses.add(typ)
-                return lambda: convert(get_req_values())
+                return lambda values: convert(values)
             else:
                 if typ == FileStorage:
                     typ = lambda v: v  # type: ignore
-                return lambda: getvalue(name, typ)
+                return lambda values: getvalue(values, name, typ)
 
         # npy = 0
         # for name, t in hints.items():
@@ -276,35 +311,46 @@ class Api:
         asjson = "return" in hints and issubclass(hints["return"], BaseModel)
         if asjson:
             self.dataclasses.add(hints["return"])
+        return asjson, cargs
 
-        del hints
-        del ts
-        del sig
+    def api(self, func, *, onexc=None):
+        ts = self.builder(func)
+        ts = replace(ts, isasync=True)
+        self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
+
+        asjson, cargs = self.create_api(func)
 
         @wraps(func)
         def api_func(*_args, **kwargs):
             args = {}
+            name = None
+            values = self.get_req_values()
             try:
                 for name, cvt in cargs.items():
-                    v = cvt()
+                    v = cvt(values)
                     if v is not MISSING:
                         args[name] = v
 
             except ValidationError as e:
                 if onexc is not None:
                     return onexc(e)
+                if self._onexc is not None:
+                    return self._onexc(e)
                 return self.onexc(e)
 
-            except ValueError as e:
-                # FIXME!
+            except (ValueError, TypeError) as e:
+                exc = FlaskValueError(e, name)
                 if onexc is not None:
-                    return onexc(e)
-                return self.onexc(VE(status="failed", msg=str(e)))
+                    return onexc(exc)
+                if self._onexc is not None:
+                    return self._onexc(exc)
+                return self.onexc(exc)
 
             kwargs.update(args)
             ret = func(**kwargs)
             if asjson:
                 if not isinstance(ret, BaseModel):
+                    # this is a bug!
                     raise ValueError(
                         f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
                     )
@@ -314,7 +360,23 @@ class Api:
 
         return api_func  # type: ignore
 
-    def onexc(self, e: ValidationError | VE) -> Response:
+    def get_req_values(self) -> ImmutableMultiDict:
+        ret: ImmutableMultiDict
+        if hasattr(g, "_flask_typescript"):
+            return g._flask_typescript
+        if request.is_json:
+            g._flask_typescript = ret = ImmutableMultiDict(
+                dict(flatten(request.json or {})),
+            )
+            return ret
+
+        ret = CombinedMultiDict([request.values, request.files])  # type: ignore
+        if self.from_jquery:
+            ret = jquery_form(ret)
+        g._flask_typescript = ret
+        return ret
+
+    def onexc(self, e: ValidationError | FlaskValueError) -> Response:
         ret = make_response(e.json(), 400)
         ret.headers["Content-Type"] = "application/json"
         return ret
@@ -362,7 +424,6 @@ class Api:
             )
             def show_api(out: str | None = None, without_interface: bool = False):
                 d = app.extensions["flask-typescript"]
-                appname = app.name.split(".")[-1].title()
                 dataclasses = set()
                 for api in d:
                     dataclasses |= api.dataclasses
@@ -372,12 +433,12 @@ class Api:
                         Api.show_dataclasses(dataclasses=dataclasses, file=fp)
                         if not without_interface:
                             for api in d:
-                                api.show_interface(self.name or appname, file=fp)
+                                api.show_interface(self.name, file=fp)
                 else:
                     Api.show_dataclasses(dataclasses=dataclasses)
                     if not without_interface:
                         for api in d:
-                            api.show_interface(self.name or appname)
+                            api.show_interface(self.name)
 
         d = app.extensions["flask-typescript"]
         d.add(self)
