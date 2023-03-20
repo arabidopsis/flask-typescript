@@ -31,6 +31,7 @@ from .typing import TSField
 from .typing import TSInterface
 from .utils import flatten
 from .utils import jquery_form
+from .utils import lenient_issubclass
 
 
 def converter(
@@ -214,16 +215,6 @@ class FlaskValueError(ValueError):
         ]
 
 
-def get_req_values() -> ImmutableMultiDict:
-    if not hasattr(g, "_flask_typescript"):
-        g._flask_typescript = (
-            ImmutableMultiDict(dict(flatten(request.json or {})))
-            if request.is_json
-            else CombinedMultiDict([request.values, request.files])  # type: ignore
-        )
-    return g._flask_typescript
-
-
 class Api:
     builder = TSBuilder()
 
@@ -259,7 +250,7 @@ class Api:
         def getvalue(values: ImmutableMultiDict, name: str, t: type[Any]) -> Any:
             return t(values.get(name)) if name in values else MISSING
 
-        def getlistvalue(
+        def getseqvalue(
             values: ImmutableMultiDict,
             name: str,
             t: type[Any],
@@ -273,7 +264,7 @@ class Api:
 
         def cvt(name: str, typ: type[Any]) -> Callable[[ImmutableMultiDict], Any]:
             if hasattr(typ, "__args__"):
-                # e.g. list[int]
+                # assume  list[int], set[float] etc.
                 if len(typ.__args__) > 1:
                     raise ValueError(f"can't do multi arguments {name}[{typ}]")
                 arg = typ.__args__[0]
@@ -282,13 +273,13 @@ class Api:
                 # e.g. arg == int so int(value) acts as converter
                 if issubclass(arg, BaseModel):
                     arg = converter(arg)
-                if arg == FileStorage:
+                elif arg == FileStorage:
                     arg = lambda v: v
 
-                return lambda values: getlistvalue(values, name, typ, arg)
+                return lambda values: getseqvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
-                convert = converter(typ)
+                convert = converter(typ, prefix=[name] if npy > 1 else None)
                 self.dataclasses.add(typ)
                 return lambda values: convert(values)
             else:
@@ -296,12 +287,11 @@ class Api:
                     typ = lambda v: v  # type: ignore
                 return lambda values: getvalue(values, name, typ)
 
-        # npy = 0
-        # for name, t in hints.items():
-        #     if name == "return":
-        #         continue
-        #     if issubclass(t, BaseModel):
-        #         npy += 1
+        npy = sum(
+            1
+            for name, t in hints.items()
+            if name != "return" and lenient_issubclass(t, BaseModel)
+        )
 
         for name, t in hints.items():
             if name == "return":
@@ -324,7 +314,7 @@ class Api:
         def api_func(*_args, **kwargs):
             args = {}
             name = None
-            values = self.get_req_values()
+            values = self.cache_get_req_values()
             try:
                 for name, cvt in cargs.items():
                     v = cvt(values)
@@ -338,7 +328,7 @@ class Api:
                     return self._onexc(e)
                 return self.onexc(e)
 
-            except (ValueError, TypeError) as e:
+            except ValueError as e:
                 exc = FlaskValueError(e, name)
                 if onexc is not None:
                     return onexc(exc)
@@ -360,21 +350,23 @@ class Api:
 
         return api_func  # type: ignore
 
-    def get_req_values(self) -> ImmutableMultiDict:
+    def cache_get_req_values(self) -> ImmutableMultiDict:
         ret: ImmutableMultiDict
         if hasattr(g, "_flask_typescript"):
             return g._flask_typescript
+        g._flask_typescript = ret = self.get_req_values()
+        return ret
+
+    def get_req_values(self) -> ImmutableMultiDict:
         if request.is_json:
-            g._flask_typescript = ret = ImmutableMultiDict(
+            return ImmutableMultiDict(
                 dict(flatten(request.json or {})),
             )
-            return ret
 
-        ret = CombinedMultiDict([request.values, request.files])  # type: ignore
+        ret = CombinedMultiDict([request.args, request.form, request.files])  # type: ignore
         if self.from_jquery:
-            ret = jquery_form(ret)
-        g._flask_typescript = ret
-        return ret
+            ret = jquery_form(ret)  # type: ignore
+        return ret  # type: ignore
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:
         ret = make_response(e.json(), 400)

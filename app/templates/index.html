@@ -23,7 +23,9 @@
         }
 
         input:invalid,
-        select:invalid {
+        input.invalid,
+        select:invalid,
+        select.invalid {
             border: 2px dashed red;
         }
 
@@ -32,10 +34,10 @@
             background-image: linear-gradient(to right, pink, lightgreen);
         }
 
-        input:valid,
+        /* input:valid,
         select:valid {
             border: 2px solid black;
-        }
+        } */
 
         fieldset {
             border-radius: .5em;
@@ -48,12 +50,15 @@
     <h2>Tests of pydantic for Flask</h2>
 
     <a href="https://developer.mozilla.org/en-US/docs/Learn/Forms">MDN notes on forms</a>
+    Add <code>onkeydown="return event.key != 'Enter';"</code> to form element to prevent
+    form submission on <code>Enter</code>
     <hr />
     <form id="myform" method='post' action="{{url_for('full')}}">
         <button type="submit">Submit</button>
         <br />
         Simple text
-        <dfn>query</dfn> <code>str</code>: <input type="text" name="query" value="c" required />
+        <dfn>query</dfn> <code>str</code>: {#<input type="text" name="query" value="c" required /> #}
+        <textarea name="query" required>ccc</textarea>
         <br />
         boolean
         <dfn>doit</dfn> <code>bool</code>: <input type="checkbox" name="doit" />
@@ -83,7 +88,13 @@
         <br />
         <dfn>date</dfn> <code>datetime.date</code>: <input type="date" name="date" value="2000-01-10" />
         <br />
-        <dfn>extra.query</dfn> <code>str</code>: <input type="text" name="extra.query" value="query" />
+        <dfn>arg5.query</dfn> <code>str</code>: <input type="text" name="arg5.query" value="query" list="xxx" />
+        <datalist id="xxx">
+            <option selected value="query"></option>
+            <option value="ab"></option>
+            <option value="ac"></option>
+            <option value="ad"></option>
+        </datalist>
     </form>
     <pre id="result"></pre>
     <pre id="result-json"></pre>

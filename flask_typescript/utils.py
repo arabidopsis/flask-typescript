@@ -1,9 +1,19 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 from typing import Iterator
 
 from werkzeug.datastructures import ImmutableMultiDict
+
+ARG = re.compile(r"\[([^]]*)\]")
+
+
+def lenient_issubclass(
+    cls: Any,
+    class_or_tuple: type[Any] | tuple[type[Any], ...] | None,
+) -> bool:
+    return isinstance(cls, type) and issubclass(cls, class_or_tuple)  # type: ignore[arg-type]
 
 
 def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
@@ -26,17 +36,29 @@ def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
 # columns[0][orderable]: true
 # columns[0][search][value]:
 # columns[0][search][regex]: false
-def php_keys(key: str) -> list[str]:
-    ret = key.replace("[", "\x00").replace("]", "\x00").split("\x00")
-    if key.endswith("]"):
-        ret = ret[:-1]  # chop final ''
-    return ret
+
+
+def ijquery_keys(key: str) -> Iterator[str]:
+    start = 0
+    for m in ARG.finditer(key):
+        prev = key[start : m.start()]
+        if prev:
+            yield prev
+        yield m.group(1)
+        start = m.end()
+    prev = key[start:]
+    if prev:
+        yield prev
+
+
+def jquery_keys(key: str) -> list[str]:
+    return list(ijquery_keys(key))
 
 
 # names that are just [0] are invalid
 # [0]: val1
 # [1]: val2
-def tojson(form: ImmutableMultiDict) -> dict[str, Any]:
+def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
     ret: dict[str, Any] = {}
 
     def ensure(lst, idx):
@@ -44,9 +66,8 @@ def tojson(form: ImmutableMultiDict) -> dict[str, Any]:
             lst.append({})
 
     for fullkey, val in form.items():
-        keylist = php_keys(fullkey)
+        keylist = jquery_keys(fullkey)
         tgt = ret
-
         prefix, key = keylist[:-1], keylist[-1]
         if len(prefix) == 0 and key.isdigit():
             raise ValueError(f"illegal key {fullkey}")
@@ -76,4 +97,4 @@ def tojson(form: ImmutableMultiDict) -> dict[str, Any]:
 
 
 def jquery_form(form: ImmutableMultiDict) -> ImmutableMultiDict:
-    return ImmutableMultiDict(flatten(tojson(form)))
+    return ImmutableMultiDict(flatten(jquery_json(form)))
