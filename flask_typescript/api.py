@@ -301,7 +301,12 @@ class Api:
             self.dataclasses.add(hints["return"])
 
         if len(cargs) > 1 and not file_storage:
-            self.dataclasses.add(type(funcname(func).title(), (BaseModel,), dict(__annotations__=args)))  # type: ignore
+            pydant = type(
+                funcname(func).title(),
+                (BaseModel,),
+                dict(__annotations__=args, **defaults),
+            )
+            self.dataclasses.add(pydant)  # type: ignore
 
         return asjson, cargs
 

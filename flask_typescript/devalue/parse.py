@@ -20,12 +20,15 @@ undefined = object()  # fake undefined
 
 # https://svelte.dev/repl/138d70def7a748ce9eda736ef1c71239?version=3.49.0
 def parse(serialized: str, revivers=None):
-    return unflatten(json.loads(serialized), revivers or {})
+    return unflatten(json.loads(serialized), revivers)
 
 
-def unflatten(values: list | int, revivers):  # noqa: C901
+def unflatten(values: list | int, revivers=None):  # noqa: C901
+    revivers = revivers or {}
+
     def hydrate(index: int, standalone: bool = False):
         if index == UNDEFINED:
+            # raise ValueError("can't implement undefined!")
             return undefined
         if index == NAN:
             return math.nan
@@ -66,10 +69,15 @@ def unflatten(values: list | int, revivers):  # noqa: C901
                     for v in value[1:]:
                         s.add(hydrate(v))
 
-                elif type == "Map" or type == "null":
+                elif type == "Map":
                     hydrated[index] = map = {}
                     for i in range(1, len(value), 2):
                         map[hydrate(value[i])] = hydrate(value[i + 1])
+
+                elif type == "null":
+                    hydrated[index] = map = {}
+                    for i in range(1, len(value), 2):
+                        map[value[i]] = hydrate(value[i + 1])
 
                 elif type == "RegExp":
                     flags = 0
@@ -77,7 +85,7 @@ def unflatten(values: list | int, revivers):  # noqa: C901
                         "i": re.IGNORECASE,
                         "m": re.MULTILINE,
                         "s": re.DOTALL,
-                        "g": 0,  # Can't do this!!!
+                        "g": 0,  # Can't do global!!!
                     }
                     if len(value) == 3:
                         for f in value[2]:  # gims
