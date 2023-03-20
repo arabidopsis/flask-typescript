@@ -246,6 +246,7 @@ class Api:
             k: v.default for k, v in sig.parameters.items() if v.default is not v.empty
         }
         cargs = {}
+        file_storage = False
 
         def getvalue(values: ImmutableMultiDict, name: str, t: type[Any]) -> Any:
             return t(values.get(name)) if name in values else MISSING
@@ -263,6 +264,7 @@ class Api:
             return t(arg(v) for v in ret)
 
         def cvt(name: str, typ: type[Any]) -> Callable[[ImmutableMultiDict], Any]:
+            nonlocal file_storage
             if hasattr(typ, "__args__"):
                 # assume  list[int], set[float] etc.
                 if len(typ.__args__) > 1:
@@ -274,6 +276,7 @@ class Api:
                 if issubclass(arg, BaseModel):
                     arg = converter(arg)
                 elif arg == FileStorage:
+                    file_storage = True
                     arg = lambda v: v
 
                 return lambda values: getseqvalue(values, name, typ, arg)
@@ -285,22 +288,21 @@ class Api:
             else:
                 if typ == FileStorage:
                     typ = lambda v: v  # type: ignore
+                    file_storage = True
                 return lambda values: getvalue(values, name, typ)
 
-        npy = sum(
-            1
-            for name, t in hints.items()
-            if name != "return" and lenient_issubclass(t, BaseModel)
-        )
+        args = {name: t for name, t in hints.items() if name != "return"}
+        npy = sum(1 for name, t in args.items() if lenient_issubclass(t, BaseModel))
 
-        for name, t in hints.items():
-            if name == "return":
-                continue
-            cargs[name] = cvt(name, t)
+        cargs = {name: cvt(name, t) for name, t in args.items()}
 
         asjson = "return" in hints and issubclass(hints["return"], BaseModel)
         if asjson:
             self.dataclasses.add(hints["return"])
+
+        if len(cargs) > 1 and not file_storage:
+            self.dataclasses.add(type(funcname(func).title(), (BaseModel,), dict(__annotations__=args)))  # type: ignore
+
         return asjson, cargs
 
     def api(self, func, *, onexc=None):
