@@ -1,0 +1,2 @@
+typescript:
+	npx tsc --watch
