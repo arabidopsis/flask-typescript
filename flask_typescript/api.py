@@ -10,10 +10,10 @@ from types import FunctionType
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
+from typing import TypeVar
 
 import click
 from flask import Flask
-from flask import g
 from flask import make_response
 from flask import request
 from flask import Response
@@ -32,6 +32,34 @@ from .typing import TSInterface
 from .utils import flatten
 from .utils import jquery_form
 from .utils import lenient_issubclass
+
+DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
+
+
+class FlaskValueError(ValueError):
+    def __init__(self, exc: ValueError, loc: str, errtype: str = "unknown"):
+        super().__init__()
+        self.exc = exc
+        self.loc = loc
+        self.errtype = errtype
+
+    def json(self, *, indent: None | int | str = 2) -> str:
+        return json.dumps(self.errors(), indent=indent, default=pydantic_encoder)
+
+    def errors(self):
+        return [
+            dict(
+                loc=(self.loc,),
+                msg=str(self.exc),
+                type=f"value_error.{self.errtype}",
+            ),
+        ]
+
+
+ExcFunc = TypeVar(
+    "ExcFunc",
+    bound=Callable[[ValidationError | FlaskValueError], Response],
+)
 
 
 def converter(
@@ -195,50 +223,52 @@ def funcname(func: FunctionType) -> str:
     return func.__name__
 
 
-class FlaskValueError(ValueError):
-    def __init__(self, exc: ValueError, loc: str, errtype: str = "unknown"):
-        super().__init__()
-        self.exc = exc
-        self.loc = loc
-        self.errtype = errtype
-
-    def json(self, *, indent: None | int | str = 2) -> str:
-        return json.dumps(self.errors(), indent=indent, default=pydantic_encoder)
-
-    def errors(self):
-        return [
-            dict(
-                loc=(self.loc,),
-                msg=str(self.exc),
-                type=f"value_error.{self.errtype}",
-            ),
-        ]
-
-
 class Api:
     builder = TSBuilder()
 
     def __init__(
         self,
         name: str,
-        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
         *,
+        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
         from_jquery: bool = False,
+        as_devalue: bool = False,
     ):
+        if "." in name:
+            name = name.split(".")[-1]
         self.name = name
         self.dataclasses: set[type[BaseModel]] = set()
         self.funcs: list[TSField] = []
         self._onexc = onexc
         self.from_jquery = from_jquery
+        self.as_devalue = as_devalue
+        self.min_py = 1
 
-    def __call__(self, func=None, *, onexc=None):
+    def __call__(
+        self,
+        func: DecoratedCallable | None = None,
+        *,
+        onexc: ExcFunc | None = None,
+        as_devalue: bool | None = None,
+        from_jquery: bool | None = None,
+    ):
         if func is None:
-            return lambda func: self.api(func, onexc=onexc)
-        return self.api(func, onexc=onexc)
+            return lambda func: self.api(
+                func,
+                onexc=onexc,
+                as_devalue=as_devalue,
+                from_jquery=from_jquery,
+            )
+        return self.api(
+            func,
+            onexc=onexc,
+            as_devalue=as_devalue,
+            from_jquery=from_jquery,
+        )
 
     def create_api(
         self,
-        func,
+        func: DecoratedCallable,
     ) -> tuple[bool, dict[str, Callable[[ImmutableMultiDict], Any]]]:
         hints = get_type_hints(func, include_extras=True)
         sig = signature(func)
@@ -271,28 +301,32 @@ class Api:
                     raise ValueError(f"can't do multi arguments {name}[{typ}]")
                 arg = typ.__args__[0]
                 if arg is Ellipsis:
-                    raise ValueError("... elipsis not allowed for argument type")
+                    raise ValueError("... ellipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter
                 if issubclass(arg, BaseModel):
+                    self.dataclasses.add(arg)
                     arg = converter(arg)
+
                 elif arg == FileStorage:
                     file_storage = True
-                    arg = lambda v: v
+                    arg = lambda v: v  # pass-through
 
                 return lambda values: getseqvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
-                convert = converter(typ, prefix=[name] if npy > 1 else None)
+                convert = converter(typ, prefix=[name] if embed else None)
                 self.dataclasses.add(typ)
                 return lambda values: convert(values)
             else:
                 if typ == FileStorage:
-                    typ = lambda v: v  # type: ignore
                     file_storage = True
+                    typ = lambda v: v  # type: ignore
                 return lambda values: getvalue(values, name, typ)
 
         args = {name: t for name, t in hints.items() if name != "return"}
-        npy = sum(1 for name, t in args.items() if lenient_issubclass(t, BaseModel))
+        npy = sum(1 for _, t in args.items() if lenient_issubclass(t, BaseModel))
+
+        embed = npy > self.min_py  # or request.is_json
 
         cargs = {name: cvt(name, t) for name, t in args.items()}
 
@@ -300,9 +334,10 @@ class Api:
         if asjson:
             self.dataclasses.add(hints["return"])
 
-        if len(cargs) > 1 and not file_storage:
+        if not file_storage:
+            # create a pydantic type from function arguments
             pydant = type(
-                funcname(func).title(),
+                self.typename(func),
                 (BaseModel,),
                 dict(__annotations__=args, **defaults),
             )
@@ -310,7 +345,17 @@ class Api:
 
         return asjson, cargs
 
-    def api(self, func, *, onexc=None):
+    def typename(self, func) -> str:
+        return f"Func{funcname(func).title()}"
+
+    def api(
+        self,
+        func: DecoratedCallable,
+        *,
+        onexc: ExcFunc | None = None,
+        as_devalue: bool | None = None,
+        from_jquery: bool | None = None,
+    ):
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
@@ -321,7 +366,7 @@ class Api:
         def api_func(*_args, **kwargs):
             args = {}
             name = None
-            values = self.cache_get_req_values()
+            values = self.get_req_values(as_devalue=as_devalue, from_jquery=from_jquery)
             try:
                 for name, cvt in cargs.items():
                     v = cvt(values)
@@ -357,21 +402,34 @@ class Api:
 
         return api_func  # type: ignore
 
-    def cache_get_req_values(self) -> ImmutableMultiDict:
-        ret: ImmutableMultiDict
-        if hasattr(g, "_flask_typescript"):
-            return g._flask_typescript
-        g._flask_typescript = ret = self.get_req_values()
-        return ret
+    # def cache_get_req_values(self) -> ImmutableMultiDict:
+    #     ret: ImmutableMultiDict
+    #     if hasattr(g, "_flask_typescript"):
+    #         return g._flask_typescript
+    #     g._flask_typescript = ret = self.get_req_values()
+    #     return ret
 
-    def get_req_values(self) -> ImmutableMultiDict:
+    def get_req_values(
+        self,
+        as_devalue: bool | None = None,
+        from_jquery: bool | None = None,
+    ) -> ImmutableMultiDict:
         if request.is_json:
+            as_devalue = self.as_devalue if as_devalue is None else as_devalue
+            json = request.json
+            assert json is not None
+            if as_devalue:
+                from .devalue.parse import unflatten
+
+                json = unflatten(json)
+
             return ImmutableMultiDict(
-                dict(flatten(request.json or {})),
+                dict(flatten(json)),
             )
 
         ret = CombinedMultiDict([request.args, request.form, request.files])  # type: ignore
-        if self.from_jquery:
+        from_jquery = self.from_jquery if from_jquery is None else from_jquery
+        if from_jquery:
             ret = jquery_form(ret)  # type: ignore
         return ret  # type: ignore
 
@@ -405,6 +463,8 @@ class Api:
         self.to_ts(self.name or app.name.split(".")[-1].title(), file=sys.stdout)
 
     def init_app(self, app: Flask) -> None:
+        from .utils import maybe_close
+
         if "flask-typescript" not in app.extensions:
             app.extensions["flask-typescript"] = set()
 
@@ -422,22 +482,16 @@ class Api:
                 help="don't output interface(s)",
             )
             def show_api(out: str | None = None, without_interface: bool = False):
-                d = app.extensions["flask-typescript"]
+                """Generate Typescript types for this Flask app."""
+                d: set[Api] = app.extensions["flask-typescript"]
                 dataclasses = set()
                 for api in d:
                     dataclasses |= api.dataclasses
-
-                if out is not None:
-                    with open(out, "w") as fp:
-                        Api.show_dataclasses(dataclasses=dataclasses, file=fp)
-                        if not without_interface:
-                            for api in d:
-                                api.show_interface(self.name, file=fp)
-                else:
-                    Api.show_dataclasses(dataclasses=dataclasses)
+                with maybe_close(out) as fp:
+                    Api.show_dataclasses(dataclasses=dataclasses, file=fp)
                     if not without_interface:
                         for api in d:
-                            api.show_interface(self.name)
+                            api.show_interface(api.name, file=fp)
 
         d = app.extensions["flask-typescript"]
         d.add(self)

@@ -1,9 +1,99 @@
 # flask-typescript
 
-typescript for flask
+typescript for [flask](https://flask.palletsprojects.com/en/2.2.x/)
+based on [FastAPI](https://fastapi.tiangolo.com) and
+[pydantic](https://docs.pydantic.dev/) (on which this package depends).
+
+Instead of generating OpenAPI schema, we generate typescript types since
+-- we believe --
+keeping the client javascript consistent with the backend python is the most
+fraught part of web development.
+
+Also, we want to make it easier to send `FormData`
+data.
+
+## Usage
+
+```python
+from flask import Flask
+from flask_typescript.api import Api
+from pydantic import BaseModel
+
+app = Flask(__name__)
+api = Api(__name__)
+
+class User(BaseModel):
+    name: str
+    age: int
+
+@app.post('/user_ok')
+@api # mark this a part of your API
+def user_ok(user:User) -> User:
+    if user.age < 60:
+        return User(name=user.name, age=50)
+    return user
+
+# adds a `ts` subcommmand to flask
+api.init_app(app)
+```
+Then on the client we can do:
+
+```javascript
+async function user_ok(user) {
+    const resp = await fetch('/user_ok', {
+                method:'post',
+                body:JSON.stringify(user),
+                headers: {
+                    "Content-Type": "application/json",
+                }
+            }
+        )
+    if (!resp.ok) {
+        throw new Error("no good!")
+    }
+    return await resp.json()
+}
+const user = {name:'me', age: 20}
+const user2 = await user_ok(user)
+```
+
+You can run `flask ts` to generate some typescript types can help keep your
+javascript client code in sync with your python api.
+
+## FormData
+
+```javascript
+async function user_ok(formData) {
+    const resp = await fetch('/user_ok', {
+                method:'post',
+                body:formData,
+            }
+        )
+    if (!resp.ok) {
+        throw new Error("no good!")
+    }
+    return await resp.json()
+}
+
+const user2 = await user_ok(new FormData(document.forms['login']))
+```
+
+```html
+<form name="login">
+    name: <input name="name" type="text" required>
+    age: <input name="age" type="number" required min="0">
+</form>
+```
 
 
 ## TODO
 
 * Documentation :)
-* Maybe a flag for deserialsation of `https://github.com/Rich-Harris/devalue` "json"
+* argument names or no? https://fastapi.tiangolo.com/tutorial/body-multiple-params
+* Maybe a flag for deserialsation of [devalue](https://github.com/Rich-Harris/devalue) "json"
+
+
+It seems a step too far to write the bodies of the fetch functions. You are
+going to have to use some sort of `Config = {func_url: url_for('bp.func',...)}` in
+a template to connect urls to functions. Unfortunately `app.url_map` only loosely
+associates with the original function. `url_defaults` and `url_value_preprocessor` also make things more complicated.

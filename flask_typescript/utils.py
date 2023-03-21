@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from typing import Any
 from typing import Iterator
 
@@ -26,8 +27,8 @@ def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
             yield key, val
 
 
-# php keys are like:
-
+# jquery keys are like:
+# see jQuery.param: https://github.com/jquery/jquery/blob/main/src/serialize.js#L55
 
 # draw: 6
 # columns[0][data]: protein_name
@@ -81,7 +82,7 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
                 tgt = tgt[i]  # type: ignore
             else:
                 if k not in tgt:
-                    tgt[k] = [] if nxt.isdigit() else {}
+                    tgt[k] = [] if nxt.isdigit() or nxt == "" else {}
                 tgt = tgt[k]
 
         if key == "":  # from a[]
@@ -98,3 +99,15 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
 
 def jquery_form(form: ImmutableMultiDict) -> ImmutableMultiDict:
     return ImmutableMultiDict(flatten(jquery_json(form)))
+
+
+@contextmanager
+def maybe_close(filename: str | None = None, mode="w"):
+    import sys
+
+    fp = open(filename, mode=mode) if filename is not None else sys.stdout
+    try:
+        yield fp
+    finally:
+        if filename is not None:
+            fp.close

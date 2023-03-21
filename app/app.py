@@ -47,6 +47,10 @@ class Json(BaseModel):
     b: int
 
 
+class ArgXX(BaseModel):
+    query: str
+
+
 app = Flask(__name__)
 
 api = Api("Base")
@@ -99,10 +103,10 @@ def extra(arg: Arg, extra: int) -> Response:
 
 @app.post("/arg5")
 @api
-def arg5(extra: list[Arg5]) -> Arg5:
+def arg5(extra: list[ArgXX]) -> Arg5:
     print(extra)
 
-    return extra[0]
+    return Arg5(query=extra[0].query)
 
 
 @app.post("/json")

@@ -19,10 +19,12 @@ from typing import cast
 from typing import ForwardRef
 from typing import get_type_hints
 from typing import Iterator
+from typing import Literal
 from typing import Type
 from typing import Union
 
 from pydantic import BaseModel
+from pydantic.fields import ModelField
 from werkzeug.datastructures import FileStorage
 
 
@@ -102,7 +104,7 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
             f"{cls} is not a subclass of pydantic.BaseModel",
         )
 
-    def get_default(f) -> Any:
+    def get_default(f: ModelField) -> Any:
         r = f.get_default()
         if r is None and not f.allow_none:
             return MISSING
@@ -209,11 +211,12 @@ class TSField:
 class TSInterface:
     name: str
     fields: list[TSField]
+
     indent: str = INDENT
     export: bool = True
     nl: str = NL
     with_defaults: bool = True
-    interface: str = "interface"
+    interface: Literal["interface", "type"] = "interface"
 
     def to_ts(self) -> str:
         export = "export " if self.export else ""
@@ -248,6 +251,7 @@ class TSFunction:
     name: str
     args: list[TSField]
     returntype: str
+
     export: bool = True
     with_defaults: bool = True
     body: str | None = None

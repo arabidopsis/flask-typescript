@@ -5,6 +5,7 @@ import math
 import re
 from datetime import datetime
 from typing import Any
+from typing import Callable
 
 from .constants import HOLE
 from .constants import NAN
@@ -17,13 +18,15 @@ from .constants import UNDEFINED
 
 undefined = object()  # fake undefined
 
+R = dict[str, Callable[[Any], Any]]
+
 
 # https://svelte.dev/repl/138d70def7a748ce9eda736ef1c71239?version=3.49.0
-def parse(serialized: str, revivers=None):
+def parse(serialized: str, revivers: R | None = None):
     return unflatten(json.loads(serialized), revivers)
 
 
-def unflatten(values: list | int, revivers=None):  # noqa: C901
+def unflatten(values: list | int, revivers: R | None = None):  # noqa: C901
     revivers = revivers or {}
 
     def hydrate(index: int, standalone: bool = False):
@@ -55,7 +58,7 @@ def unflatten(values: list | int, revivers=None):  # noqa: C901
         elif isinstance(value, list):
             if isinstance(value[0], str):
                 type = value[0]
-
+                assert revivers is not None
                 reviver = revivers.get(type)
                 if reviver is not None:
                     hydrated[index] = ret = reviver(hydrate(value[1]))
@@ -85,7 +88,7 @@ def unflatten(values: list | int, revivers=None):  # noqa: C901
                         "i": re.IGNORECASE,
                         "m": re.MULTILINE,
                         "s": re.DOTALL,
-                        "g": 0,  # Can't do global!!!
+                        "g": 0,  # FIXME: Can't do global!!!
                     }
                     if len(value) == 3:
                         for f in value[2]:  # gims
@@ -94,10 +97,11 @@ def unflatten(values: list | int, revivers=None):  # noqa: C901
                     hydrated[index] = re.compile(value[1], flags)
 
                 elif type == "Object":
-                    # Boolean,String,Number... just use the number
+                    # Boolean,String,Number... just use the value
                     hydrated[index] = value[1]
 
                 elif type == "BigInt":
+                    # python integers are big!
                     hydrated[index] = int(value[1])
 
                 else:
