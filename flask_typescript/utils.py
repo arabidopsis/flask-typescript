@@ -56,7 +56,7 @@ def jquery_keys(key: str) -> list[str]:
     return list(ijquery_keys(key))
 
 
-# names that are just [0] are invalid
+# names that are just [0] are invalid e.g.:
 # [0]: val1
 # [1]: val2
 def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
@@ -98,6 +98,7 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
 
 
 def jquery_form(form: ImmutableMultiDict) -> ImmutableMultiDict:
+    """Turn a jquery form dictionary into a dotted dictionary"""
     return ImmutableMultiDict(flatten(jquery_json(form)))
 
 
@@ -110,4 +111,4 @@ def maybe_close(filename: str | None = None, mode="w"):
         yield fp
     finally:
         if filename is not None:
-            fp.close
+            fp.close()

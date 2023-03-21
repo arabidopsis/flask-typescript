@@ -32,6 +32,7 @@ from .typing import TSInterface
 from .utils import flatten
 from .utils import jquery_form
 from .utils import lenient_issubclass
+from .utils import maybe_close
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
@@ -218,7 +219,7 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
 
 def funcname(func: FunctionType) -> str:
     while hasattr(func, "__wrapped__"):
-        func = func.__wrapped__()
+        func = func.__wrapped__
 
     return func.__name__
 
@@ -235,7 +236,7 @@ class Api:
         as_devalue: bool = False,
     ):
         if "." in name:
-            name = name.split(".")[-1]
+            name = name.split(".")[-1].title()
         self.name = name
         self.dataclasses: set[type[BaseModel]] = set()
         self.funcs: list[TSField] = []
@@ -266,17 +267,25 @@ class Api:
             from_jquery=from_jquery,
         )
 
+    def add(self, cls: type[BaseModel]) -> None:
+        """Add random pydantic class to `flask ts` output"""
+        if not lenient_issubclass(cls, BaseModel):
+            raise ValueError(f"{cls.__name__} is not a pydantic class")
+        self.dataclasses.add(cls)
+
     def create_api(
         self,
         func: DecoratedCallable,
     ) -> tuple[bool, dict[str, Callable[[ImmutableMultiDict], Any]]]:
         hints = get_type_hints(func, include_extras=True)
-        sig = signature(func)
+
         defaults = {
-            k: v.default for k, v in sig.parameters.items() if v.default is not v.empty
+            k: v.default
+            for k, v in signature(func).parameters.items()
+            if v.default is not v.empty
         }
         cargs = {}
-        file_storage = False
+        has_file_storage = False
 
         def getvalue(values: ImmutableMultiDict, name: str, t: type[Any]) -> Any:
             return t(values.get(name)) if name in values else MISSING
@@ -294,8 +303,9 @@ class Api:
             return t(arg(v) for v in ret)
 
         def cvt(name: str, typ: type[Any]) -> Callable[[ImmutableMultiDict], Any]:
-            nonlocal file_storage
+            nonlocal has_file_storage
             if hasattr(typ, "__args__"):
+                # check type is list,set,tuple....
                 # assume  list[int], set[float] etc.
                 if len(typ.__args__) > 1:
                     raise ValueError(f"can't do multi arguments {name}[{typ}]")
@@ -308,7 +318,7 @@ class Api:
                     arg = converter(arg)
 
                 elif arg == FileStorage:
-                    file_storage = True
+                    has_file_storage = True
                     arg = lambda v: v  # pass-through
 
                 return lambda values: getseqvalue(values, name, typ, arg)
@@ -319,7 +329,7 @@ class Api:
                 return lambda values: convert(values)
             else:
                 if typ == FileStorage:
-                    file_storage = True
+                    has_file_storage = True
                     typ = lambda v: v  # type: ignore
                 return lambda values: getvalue(values, name, typ)
 
@@ -331,10 +341,11 @@ class Api:
         cargs = {name: cvt(name, t) for name, t in args.items()}
 
         asjson = "return" in hints and issubclass(hints["return"], BaseModel)
+        # todo check for iterator[BaseModel] too...
         if asjson:
             self.dataclasses.add(hints["return"])
 
-        if not file_storage:
+        if not has_file_storage and len(args) > 0:
             # create a pydantic type from function arguments
             pydant = type(
                 self.typename(func),
@@ -355,17 +366,25 @@ class Api:
         onexc: ExcFunc | None = None,
         as_devalue: bool | None = None,
         from_jquery: bool | None = None,
-    ):
+    ) -> DecoratedCallable:
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
 
         asjson, cargs = self.create_api(func)
 
+        def doexc(e):
+            if onexc is not None:
+                return onexc(e)
+            if self._onexc is not None:
+                return self._onexc(e)
+            return self.onexc(e)
+
         @wraps(func)
         def api_func(*_args, **kwargs):
             args = {}
             name = None
+            # this is probably async...
             values = self.get_req_values(as_devalue=as_devalue, from_jquery=from_jquery)
             try:
                 for name, cvt in cargs.items():
@@ -374,19 +393,10 @@ class Api:
                         args[name] = v
 
             except ValidationError as e:
-                if onexc is not None:
-                    return onexc(e)
-                if self._onexc is not None:
-                    return self._onexc(e)
-                return self.onexc(e)
+                return doexc(e)
 
             except ValueError as e:
-                exc = FlaskValueError(e, name)
-                if onexc is not None:
-                    return onexc(exc)
-                if self._onexc is not None:
-                    return self._onexc(exc)
-                return self.onexc(exc)
+                return doexc(FlaskValueError(e, name))
 
             kwargs.update(args)
             ret = func(**kwargs)
@@ -396,8 +406,12 @@ class Api:
                     raise ValueError(
                         f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
                     )
-                ret = make_response(ret.json())
-                ret.headers["Content-Type"] = "application/json"
+                ret = make_response(
+                    ret.json(),
+                    200,
+                    {"Content-Type": "application/json"},
+                )
+
             return ret
 
         return api_func  # type: ignore
@@ -434,16 +448,14 @@ class Api:
         return ret  # type: ignore
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:
-        ret = make_response(e.json(), 400)
-        ret.headers["Content-Type"] = "application/json"
-        return ret
+        return make_response(e.json(), 400, {"Content-Type": "application/json"})
 
-    def to_ts(self, name: str = "App", file=sys.stdout) -> None:
+    def to_ts(self, name: str | None = None, *, file=sys.stdout) -> None:
         self.show_dataclasses(self.dataclasses, file=file)
         self.show_interface(name, file=file)
 
-    def show_interface(self, name: str, file=sys.stdout) -> None:
-        interface = TSInterface(name=name, fields=self.funcs)
+    def show_interface(self, name: str | None = None, *, file=sys.stdout) -> None:
+        interface = TSInterface(name=name or self.name, fields=self.funcs)
         print(interface, file=file)
         # for build_func in self.builder.process_seen():
         #     print(build_func())
@@ -460,11 +472,9 @@ class Api:
             print(cls.builder(model), file=file)
 
     def show_api(self, app: Flask, file=sys.stdout) -> None:
-        self.to_ts(self.name or app.name.split(".")[-1].title(), file=sys.stdout)
+        self.to_ts(self.name or app.name.split(".")[-1].title(), file=file)
 
     def init_app(self, app: Flask) -> None:
-        from .utils import maybe_close
-
         if "flask-typescript" not in app.extensions:
             app.extensions["flask-typescript"] = set()
 

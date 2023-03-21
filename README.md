@@ -29,8 +29,8 @@ class User(BaseModel):
 @app.post('/user_ok')
 @api # mark this a part of your API
 def user_ok(user:User) -> User:
-    if user.age < 60:
-        return User(name=user.name, age=50)
+    if user.age > 60:
+        return User(name=user.name + ' Jr.', age=20)
     return user
 
 # adds a `ts` subcommmand to flask
@@ -53,7 +53,7 @@ async function user_ok(user) {
     }
     return await resp.json()
 }
-const user = {name:'me', age: 20}
+const user = {name:'me', age: 61}
 const user2 = await user_ok(user)
 ```
 
@@ -74,14 +74,18 @@ async function user_ok(formData) {
     }
     return await resp.json()
 }
-
-const user2 = await user_ok(new FormData(document.forms['login']))
+const login = document.forms['login']
+login.addEventListener('submit', async e => {
+    e.preventDefault()
+    const user2 = await user_ok(new FormData(login))
+})
 ```
 
 ```html
 <form name="login">
     name: <input name="name" type="text" required>
     age: <input name="age" type="number" required min="0">
+    <button type="submit">Login</button>
 </form>
 ```
 
@@ -91,6 +95,7 @@ const user2 = await user_ok(new FormData(document.forms['login']))
 * Documentation :)
 * argument names or no? https://fastapi.tiangolo.com/tutorial/body-multiple-params
 * Maybe a flag for deserialsation of [devalue](https://github.com/Rich-Harris/devalue) "json"
+* Stream responses e.g. ServerSideEvent i.e. responses that are list[BaseModel], Iterator[BaseModel] etc.
 
 
 It seems a step too far to write the bodies of the fetch functions. You are
