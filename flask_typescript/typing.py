@@ -406,12 +406,19 @@ class TSBuilder:
                 k, v = iargs
                 args = f"{{ [name: {k}]: {v} }}"
             else:
-                # Union,List
-                _args = sorted(set(iargs))
-                if "null" in _args and _args[-1] != "null":
-                    _args.remove("null")
-                    _args = _args + ["null"]
-                args = " | ".join(_args)
+                if is_type and issubclass(cls, tuple):
+                    # tuple types
+                    args = "[" + ",".join(iargs) + "]"
+                    # we need to bail early here since
+                    # we are not a list
+                    return args
+                else:
+                    # Union,List
+                    _args = sorted(set(iargs))
+                    if "null" in _args and _args[-1] != "null":
+                        _args.remove("null")
+                        _args = _args + ["null"]
+                    args = " | ".join(_args)
         else:
             if is_type:
                 if cls not in self.TS:
@@ -458,9 +465,10 @@ class TSBuilder:
             )
 
     def get_dc_ts(self, typ: type[Any]) -> TSInterface:
+        fields = list(self.get_field_types(typ))
         return TSInterface(
             name=typ.__name__,
-            fields=list(self.get_field_types(typ)),
+            fields=fields,
             interface="type",
         )
 
