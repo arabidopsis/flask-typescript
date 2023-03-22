@@ -560,8 +560,6 @@ class Api:
             json = jquery_form(ret)
         else:
             json = multidict_json(ret)
-        print(request.form)
-        print("XXXX", json)
         return json  # type: ignore
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:

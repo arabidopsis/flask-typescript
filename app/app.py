@@ -104,7 +104,7 @@ def extra(arg: Arg, extra: int) -> Response:
 @app.post("/arg5")
 @api
 def arg5(extra: list[ArgXX]) -> Arg5:
-    print("HEREX", extra)
+    # print("HEREX", extra)
 
     return Arg5(query=extra[0].query)
 
@@ -112,7 +112,7 @@ def arg5(extra: list[ArgXX]) -> Arg5:
 @app.post("/arg6")
 @api(from_jquery=True)
 def arg6(extra: list[ArgXX]) -> Arg5:
-    print("HEREX", extra)
+    # print("HEREX", extra)
 
     return Arg5(query=extra[0].query)
 
