@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import _MISSING_TYPE
 from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
@@ -10,6 +11,7 @@ from types import FunctionType
 from typing import Any
 from typing import Callable
 from typing import get_type_hints
+from typing import TypeAlias
 from typing import TypeVar
 
 import click
@@ -35,6 +37,9 @@ from .utils import lenient_issubclass
 from .utils import maybe_close
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
+
+MaybeDict: TypeAlias = dict[str, Any] | None
+MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
 
 
 class FlaskValueError(ValueError):
@@ -66,11 +71,15 @@ ExcFunc = TypeVar(
 def converter(
     model: type[BaseModel],
     prefix: list[str] | None = None,
-) -> Callable[[ImmutableMultiDict], BaseModel]:
-    cvt = convert_from_schema(model.schema(), prefix or [])
+    hasdefault: bool = False,
+) -> Callable[[ImmutableMultiDict], MaybeModel]:
+    cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
 
-    def convert(values: ImmutableMultiDict) -> BaseModel:
-        return model(**cvt(values))
+    def convert(values: ImmutableMultiDict) -> MaybeModel:
+        args = cvt(values)
+        if args is None:
+            return MISSING
+        return model(**args)
 
     return convert
 
@@ -78,19 +87,13 @@ def converter(
 def convert_from_schema(
     schema: dict[str, Any],
     prefix: list[str],
-) -> Callable[[ImmutableMultiDict], dict[str, Any]]:
+    hasdefault: bool = False,
+) -> Callable[[ImmutableMultiDict], MaybeDict]:
     def dotted_toname(name: str) -> str:
         return ".".join(prefix + [name])
 
-    # def php_toname(name:str) -> str:
-    #     if not prefix:
-    #         return name
-    #     return prefix[0] + ''.join(f'[{s}]' for s in prefix[1:] + [name])
-
-    toname = dotted_toname
-
     def mkgetlist(name: str, hasdefault: bool):
-        name = toname(name)
+        name = dotted_toname(name)
 
         def getlist(values: ImmutableMultiDict):
             if hasdefault and name not in values:
@@ -100,44 +103,89 @@ def convert_from_schema(
         return getlist
 
     def mkgetval(name: str, hasdefault: bool):
-        name = toname(name)
+        name = dotted_toname(name)
 
         def getval(values: ImmutableMultiDict):
             return values.get(name, MISSING)
 
         return getval
 
-    def mkconvert(d: Callable[[ImmutableMultiDict], dict[str, Any]]):
-        def convert(values: ImmutableMultiDict) -> dict[str, Any]:
+    def mkconvert(d: Callable[[ImmutableMultiDict], MaybeDict], hasdefault: bool):
+        def convert(values: ImmutableMultiDict) -> MaybeDict:
             return d(values)
 
         return convert
+
+    def aschema(
+        name: str,
+        loc: str,
+        n: str,
+        hasdefault: bool,
+    ) -> Callable[[ImmutableMultiDict], MaybeDict]:
+        schema2 = schema[loc][n]
+        d = convert_from_schema(schema2, prefix=prefix + [name], hasdefault=hasdefault)
+        return mkconvert(d, hasdefault)
+
+    def subschemas(
+        name,
+        lst: list[tuple[str, str]],
+        hasdefault: bool,
+    ) -> Callable[[ImmutableMultiDict], MaybeDict]:
+        cvts: list[Callable[[ImmutableMultiDict], MaybeDict]] = []
+        cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
+
+        if len(cvts) == 1:
+            return cvts[0]
+
+        def convert_anyOf(values: ImmutableMultiDict) -> MaybeDict:
+            for cvt in cvts:
+                a = cvt(values)
+                if a is not None:
+                    return a
+            return None
+
+        return convert_anyOf
 
     required = set(schema.get("required", []))
     ret = {}
 
     for name, p in schema["properties"].items():
-        hasdefault = name not in required
-        if "$ref" in p:
-            loc, n = getname(p["$ref"])
-            schema2 = schema[loc][n]
-            d = convert_from_schema(schema2, prefix=prefix + [name])
-            ret[name] = mkconvert(d)
+        hasdefault2 = name not in required
+        if "type" not in p:
+            if "$ref" in p:
+                typ = [getname(p["$ref"])]
+
+            elif "anyOf" in p:
+                # this is X | Y
+                typ = [getname(t["$ref"]) for t in p["anyOf"]]
+            elif "oneOf" in p:
+                # this is what?
+                typ = [getname(t["$ref"]) for t in p["oneOf"]]
+            # elif 'allOf' in p:
+            # non existent intersection type!
+            # this is what should be a singleton
+            # typ = [getname(t['$ref']) for t in p['allOf']]
+            # oftype = 'allOf'
+            else:
+                raise TypeError(f"can't find type for {name}: {p}")
+            ret[name] = subschemas(name, typ, hasdefault2)
             continue
 
         typ = p["type"]
         if typ == "array":
-            ret[name] = mkgetlist(name, hasdefault)
+            ret[name] = mkgetlist(name, hasdefault2)
         else:
-            ret[name] = mkgetval(name, hasdefault)
+            ret[name] = mkgetval(name, hasdefault2)
 
-    def convert(values: ImmutableMultiDict) -> dict[str, Any]:
+    def convert(values: ImmutableMultiDict) -> MaybeDict:
         args = {}
         for name, cvt in ret.items():
             v = cvt(values)
             if v is MISSING:
                 continue
             args[name] = v
+        if not args and hasdefault:
+            return None
         return args
 
     return convert
@@ -170,8 +218,16 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
         ret = []
 
         def gettype(p):
-            if "$ref" in p:
-                _, typ = getname(p["$ref"])
+            if "type" not in p:
+                if "$ref" in p:
+                    _, typ = getname(p["$ref"])
+                elif "allOf" in p:
+                    typ = "[" + " , ".join(gettype(t["$ref"]) for t in p["allOf"]) + "]"
+                elif "anyOf" in p:
+                    typ = " | ".join(gettype(t["$ref"]) for t in p["anyOf"])
+                else:
+                    # oneOf
+                    raise ValueError("can't find type!")
             else:
                 typ = p["type"]
             if typ == "array":
@@ -277,7 +333,10 @@ class Api:
         self,
         func: DecoratedCallable,
     ) -> tuple[bool, dict[str, Callable[[ImmutableMultiDict], Any]]]:
-        hints = get_type_hints(func, include_extras=True)
+        # we just need a few access functions that
+        # fetch into Flask ImmutableMultiDict object (e.g. request.values)
+        # and to deal with simple non-pydantic types (e.g. list[int])
+        hints = get_type_hints(func, localns=self.builder.ns, include_extras=True)
 
         defaults = {
             k: v.default
@@ -296,6 +355,7 @@ class Api:
             t: type[Any],
             arg: type[Any],
         ) -> Any:
+            # e.g. for list[int]
             if name not in values and name in defaults:
                 return MISSING
             ret = values.getlist(name)
@@ -324,7 +384,11 @@ class Api:
                 return lambda values: getseqvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
-                convert = converter(typ, prefix=[name] if embed else None)
+                convert = converter(
+                    typ,
+                    prefix=[name] if embed else None,
+                    hasdefault=name in defaults,
+                )
                 self.dataclasses.add(typ)
                 return lambda values: convert(values)
             else:
@@ -393,6 +457,10 @@ class Api:
                         args[name] = v
 
             except ValidationError as e:
+                # TODO: want something like: e.loc = e.loc [name] + list(e.loc)
+                if name:
+                    for err in e.errors():
+                        err["loc"] = (name,) + err["loc"]
                 return doexc(e)
 
             except ValueError as e:
@@ -406,7 +474,7 @@ class Api:
                     raise ValueError(
                         f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
                     )
-                ret = make_response(
+                ret = self.make_response(
                     ret.json(),
                     200,
                     {"Content-Type": "application/json"},
@@ -428,6 +496,7 @@ class Api:
         as_devalue: bool | None = None,
         from_jquery: bool | None = None,
     ) -> ImmutableMultiDict:
+        # requires a request context
         if request.is_json:
             as_devalue = self.as_devalue if as_devalue is None else as_devalue
             json = request.json
@@ -448,7 +517,10 @@ class Api:
         return ret  # type: ignore
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:
-        return make_response(e.json(), 400, {"Content-Type": "application/json"})
+        return self.make_response(e.json(), 400, {"Content-Type": "application/json"})
+
+    def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
+        return make_response(stuff, code, headers)
 
     def to_ts(self, name: str | None = None, *, file=sys.stdout) -> None:
         self.show_dataclasses(self.dataclasses, file=file)
@@ -505,3 +577,37 @@ class Api:
 
         d = app.extensions["flask-typescript"]
         d.add(self)
+
+
+class DebugApi(Api):
+    def __init__(
+        self,
+        name: str,
+        data: ImmutableMultiDict,
+        *,
+        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
+        from_jquery: bool = False,
+        as_devalue: bool = False,
+    ):
+        super().__init__(
+            name,
+            onexc=onexc,
+            from_jquery=from_jquery,
+            as_devalue=as_devalue,
+        )
+        self.data = data
+
+    def get_req_values(
+        self,
+        as_devalue: bool | None = None,
+        from_jquery: bool | None = None,
+    ) -> ImmutableMultiDict:
+        from_jquery = self.from_jquery if from_jquery is None else from_jquery
+        as_devalue = self.as_devalue if as_devalue is None else as_devalue
+        data = self.data
+        if from_jquery:
+            data = jquery_form(data)
+        return data
+
+    def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
+        return Response(stuff, code, headers)

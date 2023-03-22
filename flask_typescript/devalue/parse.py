@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+from collections.abc import Hashable
 from datetime import datetime
 from typing import Any
 from typing import Callable
@@ -18,15 +19,19 @@ from .constants import UNDEFINED
 
 undefined = object()  # fake undefined
 
-R = dict[str, Callable[[Any], Any]]
+
+def hashable(o):
+    return isinstance(o, Hashable)
 
 
-# https://svelte.dev/repl/138d70def7a748ce9eda736ef1c71239?version=3.49.0
-def parse(serialized: str, revivers: R | None = None):
+REVIVERS = dict[str, Callable[[Any], Any]]
+
+
+def parse(serialized: str, revivers: REVIVERS | None = None):
     return unflatten(json.loads(serialized), revivers)
 
 
-def unflatten(values: list | int, revivers: R | None = None):  # noqa: C901
+def unflatten(values: list | int, revivers: REVIVERS | None = None):  # noqa: C901
     revivers = revivers or {}
 
     def hydrate(index: int, standalone: bool = False):
@@ -75,7 +80,10 @@ def unflatten(values: list | int, revivers: R | None = None):  # noqa: C901
                 elif type == "Map":
                     hydrated[index] = map = {}
                     for i in range(1, len(value), 2):
-                        map[hydrate(value[i])] = hydrate(value[i + 1])
+                        key = hydrate(value[i])
+                        if not hashable(key):
+                            raise ValueError(f"Invalid key for Map: {key}")
+                        map[key] = hydrate(value[i + 1])
 
                 elif type == "null":
                     hydrated[index] = map = {}
@@ -133,6 +141,8 @@ def unflatten(values: list | int, revivers: R | None = None):  # noqa: C901
 
 
 if __name__ == "__main__":
+    # use https://svelte.dev/repl/138d70def7a748ce9eda736ef1c71239?version=3.49.0
+    # to get strings to test...
     import sys
     from pprint import pprint
 
