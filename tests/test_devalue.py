@@ -10,8 +10,9 @@ from flask_typescript.devalue.parse import parse
 # for the generation of these strings.
 
 
-class TestApi(unittest.TestCase):
+class TestDeValue(unittest.TestCase):
     def test_DevalueParse(self):
+        """general devalue parsing"""
         s = '[{"s":1,"y":2,"q":5,"z":8,"x":6,"today":11,"pattern":12},"a simple string",[3,4],"Date","2023-03-20T09:15:38.137Z",["null","a",6,"b",7],1,"ssss",[6,9,10],2,3,["Date","2023-03-20T13:06:38.781Z"],["RegExp","potato","i"]]'
         json = parse(s)
         q = {"a": 1, "b": "ssss"}
@@ -27,6 +28,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(json, data)
 
     def test_Map(self):
+        """devalue parse Map"""
         s = '[{"map":1},["Map",2,3,4,5],1,2,3,4]'
         json = parse(s)
         map = {1: 2, 3: 4}

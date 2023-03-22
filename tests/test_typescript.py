@@ -68,7 +68,7 @@ def get_models():
 
 def generate():
     Models = get_models()
-    builder = TSBuilder(use_name=True)
+    builder = TSBuilder()
     for name, model in Models.items():
         t = builder(model)
         s = t.to_ts()
@@ -79,7 +79,7 @@ def generate():
 class TestModels(unittest.TestCase):
     def setUp(self):
         self.Res = reader("tstext.ts")
-        self.builder = TSBuilder(use_name=True)
+        self.builder = TSBuilder()
         self.Models = get_models()
 
     def test_Models(self):

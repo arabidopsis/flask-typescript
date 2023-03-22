@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date  # noqa:
+from datetime import date
+from datetime import datetime
 
 from pydantic import BaseModel
 from werkzeug.datastructures import ImmutableMultiDict
+from werkzeug.datastructures import MultiDict
 
 from flask_typescript.api import DebugApi
 
@@ -14,7 +16,7 @@ class B(BaseModel):
 
 
 class TestApi(unittest.TestCase):
-    def test_Func(self):
+    def test_Func(self) -> None:
         """Test argument passing"""
 
         class A(BaseModel):
@@ -25,7 +27,7 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
+        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
         # data = ImmutableMultiDict(flatten({'a':{'a':'1', 'b': '2'}, 'c': {'b':'3'}}))
 
         api = DebugApi("Debug", data)
@@ -38,7 +40,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(A(**result.json), A(a=3, b="2"))
 
-    def test_Error(self):
+    def test_Error(self) -> None:
         """Test missing argument"""
 
         class A(BaseModel):
@@ -49,7 +51,7 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data = ImmutableMultiDict([("a.a", "1"), ("c.b", "3")])
+        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("c.b", "3")])
 
         api = DebugApi("Debug", data)
         # because A is defined locally
@@ -71,9 +73,11 @@ class TestApi(unittest.TestCase):
             ],
         )
 
-    def test_JQuery(self):
+    def test_JQuery(self) -> None:
         """test jQuery.param encoding"""
-        data = ImmutableMultiDict([("a[0]", "1"), ("a[1]", "2"), ("score", "5")])
+        data: MultiDict = ImmutableMultiDict(
+            [("a[0]", "1"), ("a[1]", "2"), ("score", "5")],
+        )
 
         class A(BaseModel):
             a: list[int]
@@ -92,9 +96,9 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(A(**result.json), A(a=[1 + 5, 2 + 5]))
 
-    def test_JQuery2(self):
+    def test_JQuery2(self) -> None:
         """test2 jQuery.param encoding"""
-        data = ImmutableMultiDict(
+        data: MultiDict = ImmutableMultiDict(
             [("a[0]", "1"), ("a[1]", "2"), ("myb[b]", "xx"), ("score", "5")],
         )
 
@@ -116,8 +120,8 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(A(**result.json), A(a=[1 + 5, 2 + 5], myb=B(b="xx")))
 
-    def test_Json(self):
-        """test JSON"""
+    def test_Json(self) -> None:
+        """test JSON data"""
         data = dict(a=[1, 2], myb=dict(b="xx"), score=5)
 
         class A(BaseModel):
@@ -138,23 +142,25 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(A(**result.json), A(a=[1 + 5, 2 + 5], myb=B(b="xx")))
 
-    def test_JsonDate(self):
+    def test_DateJson(self) -> None:
         """test JSON Date"""
 
-        data = dict(date="2022-01-20")
+        data = dict(date="2022-01-20", dt="2023-03-20T13:06:38.781Z")
+        dt = datetime.fromisoformat(data["dt"])
 
         class A(BaseModel):
             date: date
+            dt: datetime
 
         api = DebugApi("Debug", data, as_devalue=True)
         # because A is defined locally
         api.builder.ns = locals()
 
         def func(arg: A) -> A:
-            return A(date=date.today())
+            return A(date=date.today(), dt=arg.dt)
 
         ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
-        self.assertEqual(A(**result.json), A(date=date.today()))
+        self.assertEqual(A(**result.json), A(date=date.today(), dt=dt))

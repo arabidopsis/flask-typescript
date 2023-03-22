@@ -12,6 +12,7 @@ from typing import Any
 from typing import Callable
 from typing import get_type_hints
 from typing import TypeAlias
+from typing import TypeGuard
 from typing import TypeVar
 
 import click
@@ -24,20 +25,23 @@ from pydantic.error_wrappers import ValidationError
 from pydantic.json import pydantic_encoder
 from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
-from werkzeug.datastructures import ImmutableMultiDict
+from werkzeug.datastructures import MultiDict
 
 from .typing import INDENT
 from .typing import NL
 from .typing import TSBuilder
 from .typing import TSField
 from .typing import TSInterface
-from .utils import fix_jsondict
+from .utils import dedottify
 from .utils import jquery_form
 from .utils import lenient_issubclass
 from .utils import maybe_close
+from .utils import multidict_json
+from .utils import unflatten
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
+JsonDict: TypeAlias = dict[str, Any]
 MaybeDict: TypeAlias = dict[str, Any] | None
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
 
@@ -68,127 +72,167 @@ ExcFunc = TypeVar(
 )
 
 
-def converter(
+# def converter(
+#     model: type[BaseModel],
+#     prefix: list[str] | None = None,
+#     hasdefault: bool = False,
+# ) -> Callable[[JsonDict], MaybeModel]:
+#     cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
+
+#     def convert(values: JsonDict) -> MaybeModel:
+#         args = cvt(values)
+#         if args is None:
+#             return MISSING
+#         return model(**args)
+
+#     return convert
+
+
+def pyconverter(
     model: type[BaseModel],
     prefix: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[ImmutableMultiDict], MaybeModel]:
-    cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
+) -> Callable[[JsonDict], MaybeModel]:
+    if prefix is None:
+        prefix = []
+    # cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
 
-    def convert(values: ImmutableMultiDict) -> MaybeModel:
-        args = cvt(values)
-        if args is None:
-            return MISSING
-        return model(**args)
-
-    return convert
-
-
-def convert_from_schema(
-    schema: dict[str, Any],
-    prefix: list[str],
-    hasdefault: bool = False,
-) -> Callable[[ImmutableMultiDict], MaybeDict]:
-    def dotted_toname(name: str) -> str:
-        return ".".join(prefix + [name])
-
-    def mkgetlist(name: str, hasdefault: bool):
-        name = dotted_toname(name)
-
-        def getlist(values: ImmutableMultiDict):
-            if hasdefault and name not in values:
-                return MISSING
-            return values.getlist(name)
-
-        return getlist
-
-    def mkgetval(name: str, hasdefault: bool):
-        name = dotted_toname(name)
-
-        def getval(values: ImmutableMultiDict):
-            return values.get(name, MISSING)
-
-        return getval
-
-    def mkconvert(d: Callable[[ImmutableMultiDict], MaybeDict], hasdefault: bool):
-        def convert(values: ImmutableMultiDict) -> MaybeDict:
-            return d(values)
-
-        return convert
-
-    def aschema(
-        name: str,
-        loc: str,
-        n: str,
-        hasdefault: bool,
-    ) -> Callable[[ImmutableMultiDict], MaybeDict]:
-        schema2 = schema[loc][n]
-        d = convert_from_schema(schema2, prefix=prefix + [name], hasdefault=hasdefault)
-        return mkconvert(d, hasdefault)
-
-    def subschemas(
-        name,
-        lst: list[tuple[str, str]],
-        hasdefault: bool,
-    ) -> Callable[[ImmutableMultiDict], MaybeDict]:
-        cvts: list[Callable[[ImmutableMultiDict], MaybeDict]] = []
-        cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
-
-        if len(cvts) == 1:
-            return cvts[0]
-
-        def convert_anyOf(values: ImmutableMultiDict) -> MaybeDict:
-            for cvt in cvts:
-                a = cvt(values)
-                if a is not None:
-                    return a
-            return None
-
-        return convert_anyOf
-
-    required = set(schema.get("required", []))
-    ret = {}
-
-    for name, p in schema["properties"].items():
-        hasdefault2 = name not in required
-        if "type" not in p:
-            if "$ref" in p:
-                typ = [getname(p["$ref"])]
-
-            elif "anyOf" in p:
-                # this is X | Y
-                typ = [getname(t["$ref"]) for t in p["anyOf"]]
-            elif "oneOf" in p:
-                # this is what?
-                typ = [getname(t["$ref"]) for t in p["oneOf"]]
-            # elif 'allOf' in p:
-            # non existent intersection type!
-            # this is what should be a singleton
-            # typ = [getname(t['$ref']) for t in p['allOf']]
-            # oftype = 'allOf'
+    def getdict(values: JsonDict) -> JsonDict:
+        for p in prefix:  # type: ignore
+            if p in values:
+                values = values[p]
+                if not isinstance(values, dict):
+                    raise ValueError(f"{'.'.join(prefix)}: bad path")
             else:
-                raise TypeError(f"can't find type for {name}: {p}")
-            ret[name] = subschemas(name, typ, hasdefault2)
-            continue
+                return {}
+        return values
 
-        typ = p["type"]
-        if typ == "array":
-            ret[name] = mkgetlist(name, hasdefault2)
-        else:
-            ret[name] = mkgetval(name, hasdefault2)
-
-    def convert(values: ImmutableMultiDict) -> MaybeDict:
-        args = {}
-        for name, cvt in ret.items():
-            v = cvt(values)
-            if v is MISSING:
-                continue
-            args[name] = v
-        if not args and hasdefault:
-            return None
-        return args
+    def convert(values: JsonDict) -> MaybeModel:
+        values = getdict(values)
+        if not values and hasdefault:
+            return MISSING
+        return model(**values)
 
     return convert
+
+
+# def convert_from_schema(
+#     schema: dict[str, Any],
+#     prefix: list[str],
+#     hasdefault: bool = False,
+# ) -> Callable[[JsonDict], MaybeDict]:
+#     def getdict(values: JsonDict) -> JsonDict:
+#         for p in prefix:
+#             if p in values:
+#                 values = values[p]
+#                 if not isinstance(values, dict):
+#                     raise ValueError(f"{'.'.join(prefix)}: bad path")
+#             else:
+#                 return {}
+#         return values
+
+#     def mkgetlist(name: str, hasdefault: bool):
+#         # name = dotted_toname(name)
+#         # print('getting list', name)
+
+#         def getlist(values: JsonDict):
+#             values = getdict(values)
+#             if name not in values:
+#                 if hasdefault:
+#                     return MISSING
+#                 return []
+#             return values[name]
+
+#         return getlist
+
+#     def mkgetval(name: str, hasdefault: bool):
+#         def getval(values: JsonDict):
+#             values = getdict(values)
+#             return values.get(name, MISSING)
+
+#         return getval
+
+#     # def mkconvert(d: Callable[[ImmutableMultiDict], MaybeDict], hasdefault: bool):
+#     #     def convert(values: ImmutableMultiDict) -> MaybeDict:
+#     #         return d(values)
+
+#     #     return convert
+
+#     def aschema(
+#         name: str,
+#         loc: str,
+#         n: str,
+#         hasdefault: bool,
+#     ) -> Callable[[JsonDict], MaybeDict]:
+#         schema2 = schema[loc][n]
+#         return convert_from_schema(
+#             schema2,
+#             prefix=prefix + [name],
+#             hasdefault=hasdefault,
+#         )
+
+#     def subschemas(
+#         name,
+#         lst: list[tuple[str, str]],
+#         hasdefault: bool,
+#     ) -> Callable[[JsonDict], MaybeDict]:
+#         cvts: list[Callable[[JsonDict], MaybeDict]] = []
+#         cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
+
+#         if len(cvts) == 1:
+#             return cvts[0]
+
+#         def convert_anyOf(values: JsonDict) -> MaybeDict:
+#             for cvt in cvts:
+#                 a = cvt(values)
+#                 if a is not None:
+#                     return a
+#             return None
+
+#         return convert_anyOf
+
+#     required = set(schema.get("required", []))
+#     ret: dict[str, Callable[[JsonDict], Any]] = {}
+
+#     for name, p in schema["properties"].items():
+#         hasdefault2 = name not in required
+#         if "type" not in p:
+#             if "$ref" in p:
+#                 typ = [getname(p["$ref"])]
+#             elif "anyOf" in p:
+#                 # this is X | Y
+#                 typ = [getname(t["$ref"]) for t in p["anyOf"]]
+#             elif "oneOf" in p:
+#                 # this is what?
+#                 typ = [getname(t["$ref"]) for t in p["oneOf"]]
+#             # elif 'allOf' in p:
+#             # non existent intersection type!
+#             # this is what should be a singleton
+#             # typ = [getname(t['$ref']) for t in p['allOf']]
+#             # oftype = 'allOf'
+#             else:
+#                 raise TypeError(f"can't find type for {name}: {p}")
+#             ret[name] = subschemas(name, typ, hasdefault2)
+#             continue
+
+#         typ = p["type"]
+#         if typ == "array":
+#             ret[name] = mkgetlist(name, hasdefault2)
+#         else:
+#             ret[name] = mkgetval(name, hasdefault2)
+
+#     def convert(values: JsonDict) -> MaybeDict:
+#         args = {}
+#         for name, cvt in ret.items():
+#             v = cvt(values)
+#             if v is MISSING:
+#                 continue
+#             args[name] = v
+#         if not args and hasdefault:
+#             return None
+#         return args
+
+#     return convert
 
 
 def repr(v):
@@ -332,7 +376,7 @@ class Api:
     def create_api(
         self,
         func: DecoratedCallable,
-    ) -> tuple[bool, dict[str, Callable[[ImmutableMultiDict], Any]]]:
+    ) -> tuple[bool, dict[str, Callable[[JsonDict], Any]]]:
         # we just need a few access functions that
         # fetch into Flask ImmutableMultiDict object (e.g. request.values)
         # and to deal with simple non-pydantic types (e.g. list[int])
@@ -346,11 +390,11 @@ class Api:
         cargs = {}
         has_file_storage = False
 
-        def getvalue(values: ImmutableMultiDict, name: str, t: type[Any]) -> Any:
+        def getvalue(values: JsonDict, name: str, t: type[Any]) -> Any:
             return t(values.get(name)) if name in values else MISSING
 
         def getseqvalue(
-            values: ImmutableMultiDict,
+            values: JsonDict,
             name: str,
             t: type[Any],
             arg: type[Any],
@@ -358,24 +402,26 @@ class Api:
             # e.g. for list[int]
             if name not in values and name in defaults:
                 return MISSING
-            ret = values.getlist(name)
+            ret = values.get(name, [])
+            if not isinstance(ret, list):
+                ret = [ret]
             # catch ValueError?
             return t(arg(v) for v in ret)
 
-        def cvt(name: str, typ: type[Any]) -> Callable[[ImmutableMultiDict], Any]:
+        def cvt(name: str, typ: type[Any]) -> Callable[[JsonDict], Any]:
             nonlocal has_file_storage
             if hasattr(typ, "__args__"):
                 # check type is list,set,tuple....
                 # assume  list[int], set[float] etc.
                 if len(typ.__args__) > 1:
-                    raise ValueError(f"can't do multi arguments {name}[{typ}]")
+                    raise TypeError(f"can't do multi arguments {name}[{typ}]")
                 arg = typ.__args__[0]
                 if arg is Ellipsis:
-                    raise ValueError("... ellipsis not allowed for argument type")
+                    raise TypeError("... ellipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter
                 if issubclass(arg, BaseModel):
                     self.dataclasses.add(arg)
-                    arg = converter(arg)
+                    arg = pyconverter(arg)
 
                 elif arg == FileStorage:
                     has_file_storage = True
@@ -384,7 +430,7 @@ class Api:
                 return lambda values: getseqvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
-                convert = converter(
+                convert = pyconverter(
                     typ,
                     prefix=[name] if embed else None,
                     hasdefault=name in defaults,
@@ -495,26 +541,28 @@ class Api:
         self,
         as_devalue: bool | None = None,
         from_jquery: bool | None = None,
-    ) -> ImmutableMultiDict:
+    ) -> JsonDict:
         # requires a request context
         if request.is_json:
             as_devalue = self.as_devalue if as_devalue is None else as_devalue
             json = request.json
             assert json is not None
             if as_devalue:
-                from .devalue.parse import unflatten
+                from .devalue.parse import unflatten as str2json
 
-                json = unflatten(json)
-                if isinstance(json, dict):
-                    json = fix_jsondict(json)
-
+                json = str2json(json)
+            assert isinstance(json, dict)
             return json
 
         ret = CombinedMultiDict([request.args, request.form, request.files])  # type: ignore
         from_jquery = self.from_jquery if from_jquery is None else from_jquery
         if from_jquery:
-            ret = jquery_form(ret)  # type: ignore
-        return ret  # type: ignore
+            json = jquery_form(ret)
+        else:
+            json = multidict_json(ret)
+        print(request.form)
+        print("XXXX", json)
+        return json  # type: ignore
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:
         return self.make_response(e.json(), 400, {"Content-Type": "application/json"})
@@ -579,13 +627,17 @@ class Api:
         d.add(self)
 
 
+def multi(val) -> TypeGuard[MultiDict]:
+    return isinstance(val, MultiDict)
+
+
 class DebugApi(Api):
     """Version of Api that doesn't require a request context"""
 
     def __init__(
         self,
         name: str,
-        data: ImmutableMultiDict,
+        data: MultiDict | dict[str, Any],
         *,
         onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
         from_jquery: bool = False,
@@ -603,19 +655,30 @@ class DebugApi(Api):
         self,
         as_devalue: bool | None = None,
         from_jquery: bool | None = None,
-    ) -> ImmutableMultiDict:
+    ) -> JsonDict:
         from_jquery = self.from_jquery if from_jquery is None else from_jquery
         as_devalue = self.as_devalue if as_devalue is None else as_devalue
+
         data = self.data
+
         if from_jquery:
+            if not multi(data):
+                raise TypeError("not a MultiDict")
             data = jquery_form(data)
         elif as_devalue:
+            if multi(data):
+                raise TypeError("not a json object")
             if isinstance(data, str):
                 from .devalue.parse import parse
 
                 data = parse(data)
-            else:
-                data = fix_jsondict(data)
+
+        else:
+            if multi(data):
+                data = dedottify(unflatten(data))
+
+        assert isinstance(data, dict)
+
         return data
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:

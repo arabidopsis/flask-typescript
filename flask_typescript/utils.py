@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from typing import Any
 from typing import Iterator
 
-from werkzeug.datastructures import ImmutableMultiDict
+from werkzeug.datastructures import MultiDict
 
 ARG = re.compile(r"\[([^]]*)\]")
 
@@ -25,6 +25,43 @@ def flatten(json: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
                 yield f"{key}.{k}", v
         else:
             yield key, val
+
+
+def unflatten(md: MultiDict) -> dict[str, Any]:
+    ret: dict[str, Any] = {}
+    for key, val in md.items(multi=True):
+        if key in ret:
+            v = ret[key]
+            if isinstance(v, list):
+                v.append(val)
+            else:
+                ret[key] = [v, val]
+        else:
+            ret[key] = val
+
+    return ret
+
+
+def dedottify(json: dict[str, Any], recursive=False) -> dict[str, Any]:
+    """undottify keys"""
+    # {'a.b':1, 'a.c':2 , 'a.d': 3} => {a: {b:1,c:2, d:3}}
+    ret: dict[str, Any] = {}
+    for key, val in json.items():
+        if recursive and isinstance(val, dict):
+            val = dedottify(val, recursive=recursive)
+        if "." in key:
+            *keylist, last = key.split(".")
+            tgt = ret
+            for k in keylist:
+                if k not in tgt:
+                    tgt[k] = {}
+                tgt = tgt[k]
+                if not isinstance(tgt, dict):
+                    raise ValueError(f"{key} inconsitent dotted key")
+            tgt[last] = val
+        else:
+            ret[key] = val
+    return ret
 
 
 # jquery keys are like:
@@ -59,10 +96,12 @@ def jquery_keys(key: str) -> list[str]:
 # names that are just [0] are invalid e.g.:
 # [0]: val1
 # [1]: val2
-def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
+def jquery_json(form: MultiDict) -> dict[str, Any]:
     ret: dict[str, Any] = {}
 
     def ensure(lst, idx):
+        if not isinstance(lst, list):
+            raise ValueError("inconsitent keys")
         while len(lst) <= idx:
             lst.append({})
 
@@ -95,15 +134,24 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
     return ret
 
 
-def fix_jsondict(json: dict[str, Any]) -> ImmutableMultiDict:
-    return ImmutableMultiDict(
-        flatten(ImmutableMultiDict(json).items(multi=True)),
-    )
+# def fix_jsondict(json: dict[str, Any]) -> ImmutableMultiDict:
+#     ijson = ImmutableMultiDict(json)
+#     print('XXX',ijson)
+#     ret = ImmutableMultiDict(
+#         flatten(ijson.items(multi=True)),
+#     )
+#     ret = ijson
+#     print('YYYY', ret)
+#     return ret
 
 
-def jquery_form(form: ImmutableMultiDict) -> ImmutableMultiDict:
+def jquery_form(form: MultiDict) -> dict[str, Any]:
     """Turn a jquery form dictionary into a dotted dictionary"""
-    return fix_jsondict(jquery_json(form))
+    return dedottify(jquery_json(form))
+
+
+def multidict_json(form: MultiDict) -> dict[str, Any]:
+    return dedottify(unflatten(form))
 
 
 @contextmanager
