@@ -17,11 +17,11 @@ def lenient_issubclass(
     return isinstance(cls, type) and issubclass(cls, class_or_tuple)  # type: ignore[arg-type]
 
 
-def flatten(json: dict[str, Any]) -> Iterator[tuple[str, Any]]:
+def flatten(json: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
     """flatten a nested dictionary into a top level dictionary with "dotted" keys"""
-    for key, val in json.items():
+    for key, val in json:
         if isinstance(val, dict):
-            for k, v in flatten(val):
+            for k, v in flatten((k, v) for k, v in val.items()):
                 yield f"{key}.{k}", v
         else:
             yield key, val
@@ -72,7 +72,6 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
         prefix, key = keylist[:-1], keylist[-1]
         if len(prefix) == 0 and key.isdigit():
             raise ValueError(f"illegal key {fullkey}")
-        # print(prefix, key)
         for k, nxt in zip(prefix, keylist[1:]):
             if k == "":  # from a[]
                 k = str(len(tgt))
@@ -88,18 +87,23 @@ def jquery_json(form: ImmutableMultiDict) -> dict[str, Any]:
         if key == "":  # from a[]
             key = str(len(tgt))
         if key.isdigit():
-            i = int(k)
+            i = int(key)
             ensure(tgt, i)
             tgt[i] = val  # type: ignore
         else:
             tgt[key] = val
-
     return ret
+
+
+def fix_jsondict(json: dict[str, Any]) -> ImmutableMultiDict:
+    return ImmutableMultiDict(
+        flatten(ImmutableMultiDict(json).items(multi=True)),
+    )
 
 
 def jquery_form(form: ImmutableMultiDict) -> ImmutableMultiDict:
     """Turn a jquery form dictionary into a dotted dictionary"""
-    return ImmutableMultiDict(flatten(jquery_json(form)))
+    return fix_jsondict(jquery_json(form))
 
 
 @contextmanager

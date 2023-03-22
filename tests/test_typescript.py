@@ -35,10 +35,10 @@ class Arg(BaseModel):
     checked: list[str] = ["aaa"]
 
 
-def reader(f: str):
+def reader(filename: str):
     import pathlib
 
-    p = pathlib.Path(__file__).parent / "resources" / f
+    p = pathlib.Path(__file__).parent / "resources" / filename
     res: dict[str, str] = {}
     with open(p) as fp:
         typ: list[str] = []
@@ -58,12 +58,16 @@ def reader(f: str):
     return res
 
 
-def generate():
-    Models = {
+def get_models():
+    return {
         name: v
         for name, v in globals().items()
         if lenient_issubclass(v, BaseModel) and v is not BaseModel
     }
+
+
+def generate():
+    Models = get_models()
     builder = TSBuilder(use_name=True)
     for name, model in Models.items():
         t = builder(model)
@@ -76,11 +80,7 @@ class TestModels(unittest.TestCase):
     def setUp(self):
         self.Res = reader("tstext.ts")
         self.builder = TSBuilder(use_name=True)
-        self.Models = {
-            name: v
-            for name, v in globals().items()
-            if lenient_issubclass(v, BaseModel) and v is not BaseModel
-        }
+        self.Models = get_models()
 
     def test_Models(self):
         """Test pydantic model to typescript generation"""
@@ -91,9 +91,4 @@ class TestModels(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import os
-
-    if os.environ.get("GENERATE"):
-        generate()
-    else:
-        unittest.main()
+    generate()

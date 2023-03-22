@@ -31,7 +31,7 @@ from .typing import NL
 from .typing import TSBuilder
 from .typing import TSField
 from .typing import TSInterface
-from .utils import flatten
+from .utils import fix_jsondict
 from .utils import jquery_form
 from .utils import lenient_issubclass
 from .utils import maybe_close
@@ -505,10 +505,10 @@ class Api:
                 from .devalue.parse import unflatten
 
                 json = unflatten(json)
+                if isinstance(json, dict):
+                    json = fix_jsondict(json)
 
-            return ImmutableMultiDict(
-                dict(flatten(json)),
-            )
+            return json
 
         ret = CombinedMultiDict([request.args, request.form, request.files])  # type: ignore
         from_jquery = self.from_jquery if from_jquery is None else from_jquery
@@ -580,6 +580,8 @@ class Api:
 
 
 class DebugApi(Api):
+    """Version of Api that doesn't require a request context"""
+
     def __init__(
         self,
         name: str,
@@ -607,6 +609,13 @@ class DebugApi(Api):
         data = self.data
         if from_jquery:
             data = jquery_form(data)
+        elif as_devalue:
+            if isinstance(data, str):
+                from .devalue.parse import parse
+
+                data = parse(data)
+            else:
+                data = fix_jsondict(data)
         return data
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
