@@ -94,6 +94,7 @@ login.addEventListener('submit', async e => {
 
 * Documentation :)
 * argument names or no? https://fastapi.tiangolo.com/tutorial/body-multiple-params
+* generate [zod](https://zod.dev/) verifiers from pydantic classes ?
 * Maybe a flag for deserialsation of [devalue](https://github.com/Rich-Harris/devalue) "json"
 * Stream responses e.g. ServerSideEvent i.e. responses that are list[BaseModel], Iterator[BaseModel] etc.
 
