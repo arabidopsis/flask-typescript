@@ -333,11 +333,14 @@ class TSBuilder:
     def __init__(
         self,
         ns: Any | None = None,  # local namespace for typing.get_type_hints
+        *,
+        use_name: bool = True,  # use name for dataclasses, pydantic classes
     ):
         self.build_stack: list[TSTypeable] = []
         self.seen: dict[str, str] = {}
         self.ns = ns
         self.built: set[str] = set()
+        self.use_name = use_name
 
     def process_seen(
         self,
@@ -378,6 +381,7 @@ class TSBuilder:
                 or is_arg
                 or typ.__name__ in self.seen
                 or typ.__name__ in self.built
+                or self.use_name
             ):  # recursive
                 if is_arg:
                     self.seen[typ.__name__] = typ.__module__
