@@ -17,8 +17,15 @@ class TestDecondig(unittest.TestCase):
 
         self.assertEqual(json, dict(extra=[dict(query="a"), dict(query="b")]))
 
+    def test_JQueryForm2(self):
+        """Test jQuery decoding"""
+        data = ImmutableMultiDict([("a[]", "a"), ("a[]", "b")])
+        json = jquery_form(data)
+
+        self.assertEqual(json, dict(a=["a", "b"]))
+
     def test_Unflatten(self):
-        """Test Unflatten"""
+        """Test unflatten"""
         data = ImmutableMultiDict([("a", "a"), ("a", "b"), ("a", "c")])
         json = unflatten(data)
 

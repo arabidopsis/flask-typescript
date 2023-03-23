@@ -5,7 +5,6 @@ from datetime import date  # noqa:
 from flask import Flask
 from flask import make_response
 from flask import render_template
-from flask import request
 from flask import Response
 from pydantic import BaseModel
 from pydantic import Field
@@ -62,15 +61,16 @@ def index():
 
 
 def onexc(e) -> Response:
-    print("HERE", e)
-    return api.onexc(e)
+    ret = api.onexc(e)
+    ret.headers["X-myexc"] = "true"
+    return ret
 
 
 @app.post("/full")
 @api
 def full(arg: Arg, extra: int = 1) -> Arg:
-    print(request.headers)
-    print(arg, extra)
+    # print(request.headers)
+    # print(arg, extra)
     arg.selected = arg.selected * extra
     arg.date = arg.date.today()
     return arg
@@ -93,10 +93,10 @@ def filestorage(val: list[int], myfiles: list[FileStorage]) -> Ret1:
     )
 
 
-@app.get("/extra/<int:extra>")
+@app.post("/extra/<int:extra>")
 @api
 def extra(arg: Arg, extra: int) -> Response:
-    print(arg, extra)
+    # print(arg, extra)
     arg.selected = arg.selected * extra
     return make_response(arg.json(), 200, {"Content-Type": "application/json"})
 
@@ -104,7 +104,8 @@ def extra(arg: Arg, extra: int) -> Response:
 @app.post("/arg5")
 @api
 def arg5(extra: list[ArgXX]) -> Arg5:
-    # print("HEREX", extra)
+    # currently can't create json or FormData to target this
+    # since embed will be False
 
     return Arg5(query=extra[0].query)
 
@@ -112,7 +113,7 @@ def arg5(extra: list[ArgXX]) -> Arg5:
 @app.post("/arg6")
 @api(from_jquery=True)
 def arg6(extra: list[ArgXX]) -> Arg5:
-    # print("HEREX", extra)
+    # formData =
 
     return Arg5(query=extra[0].query)
 

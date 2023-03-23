@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 
 from werkzeug.datastructures import ImmutableMultiDict
@@ -12,15 +13,21 @@ class TestFlask(unittest.TestCase):
         self.app = app
         self.client = app.test_client()
 
-    # def test_Flask(self):
-    #     from .app import Arg5
-    #     with self.client:
-    #         response = self.client.get('/qqq', data={
-    #             'a':'5', 'b':'44'
-    #         })
-    #     self.assertEqual(response.status_code, 200)
-    #     self.assertTrue(response.is_json)
-    #     self.assertEqual(Arg5(**response.json), Arg5(query='5-44'))
+    def test_Flask(self):
+        """Flask round trip"""
+        from .app import Arg5
+
+        with self.client:
+            response = self.client.get(
+                "/qqq",
+                data={
+                    "a": "5",
+                    "b": "44",
+                },
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.is_json)
+        self.assertEqual(Arg5(**response.json), Arg5(query="5-44"))
 
     def test_List(self):
         """Flask list as JSON"""
@@ -48,3 +55,26 @@ class TestFlask(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)
         self.assertEqual(Arg5(**response.json), Arg5(query="a"))
+
+    def test_Pydantic(self):
+        """test pydantic and url path argument"""
+        from .app import Arg
+        from datetime import date
+
+        a = Arg(
+            query="query",
+            selected=[1],
+            date=date.today(),
+            val=4.0,
+            arg5={"query": "sss"},
+        )
+
+        score = 3
+
+        with self.client:
+            response = self.client.post(f"/extra/{score}", json=json.loads(a.json()))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.is_json)
+        a.selected = a.selected * score
+        self.assertEqual(Arg(**response.json), a)
