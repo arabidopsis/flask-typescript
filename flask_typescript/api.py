@@ -46,6 +46,7 @@ DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
 
 MaybeDict: TypeAlias = dict[str, Any] | None
+MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
 
 
@@ -109,7 +110,7 @@ def pyconverter(
     prefix: list[str] | None = None,
     hasdefault: bool = False,
 ) -> Callable[[JsonDict], MaybeModel]:
-    # we would really really like to use this
+    # we would really *really* like to use this
     # simpler converter ... but mulitple selects
     # with only one selected doesn't return a list
     # so this may fail with a type_error.list
@@ -142,7 +143,7 @@ def converter(
     return convert
 
 
-def convert_from_schema(
+def convert_from_schema(  # noqa: C901
     schema: dict[str, Any],
     prefix: list[str],
     hasdefault: bool = False,
@@ -155,7 +156,7 @@ def convert_from_schema(
                     return MISSING
                 return []
             v = values[name]
-            # all this to do this!!!!
+            # ***all this to do this!!!!***
             if not isinstance(v, list):
                 v = [v]
             return v
@@ -174,31 +175,39 @@ def convert_from_schema(
         loc: str,
         n: str,
         hasdefault: bool,
-    ) -> Callable[[JsonDict], MaybeDict]:
+    ) -> Callable[[JsonDict], MissingDict]:
         schema2 = schema[loc][n]
-        return convert_from_schema(
+        ret = convert_from_schema(
             schema2,
             prefix=prefix + [name],
             hasdefault=hasdefault,
         )
 
+        def missing(values: JsonDict) -> MissingDict:
+            r = ret(values)
+            if r is None:
+                return MISSING
+            return r
+
+        return missing
+
     def subschemas(
         name,
         lst: list[tuple[str, str]],
         hasdefault: bool,
-    ) -> Callable[[JsonDict], MaybeDict]:
-        cvts: list[Callable[[JsonDict], MaybeDict]] = []
+    ) -> Callable[[JsonDict], MissingDict]:
+        cvts: list[Callable[[JsonDict], MissingDict]] = []
         cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
 
         if len(cvts) == 1:
             return cvts[0]
 
-        def convert_anyOf(values: JsonDict) -> MaybeDict:
+        def convert_anyOf(values: JsonDict) -> MissingDict:
             for cvt in cvts:
                 a = cvt(values)
-                if a is not None:
+                if a is not MISSING:
                     return a
-            return None
+            return MISSING
 
         return convert_anyOf
 

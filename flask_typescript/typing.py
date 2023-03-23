@@ -40,10 +40,6 @@ TSTypeable = Union[Type[Any], Callable[..., Any]]
 TSThing = Union["TSFunction", "TSInterface"]
 
 
-# def is_dataclass_instance(obj: Any) -> bool:
-#     return not isinstance(obj, type) and is_dataclass(obj)
-
-
 def is_dataclass_type(obj: Any) -> bool:
     return isinstance(obj, type) and is_dataclass(obj)
 
@@ -190,13 +186,10 @@ class TSInterface:
         return nl.join(f"{self.indent}{f.to_ts()}" for f in self.fields)
 
     def anonymous(self) -> ZOD:
-        sfields = ", ".join(f.to_ts() for f in self.fields)
+        return ZZZ.object(self.fields)
 
-        # return ZZZ.object({f.name:f.type for f in self.fields})
-        return ZOD(str_type=f"{{ {sfields} }}")
-
-    def is_typed(self) -> bool:
-        return all(f.is_typed() for f in self.fields)
+    # def is_typed(self) -> bool:
+    #     return all(f.is_typed() for f in self.fields)
 
     def __str__(self) -> str:
         return self.to_ts()
@@ -209,9 +202,6 @@ class TSFunction:
     returntype: ZOD
 
     export: bool = True
-    # body: str | None = None
-    nl: str = NL
-    indent: str = INDENT
     isasync: bool = False
 
     def remove_args(self, *args: str) -> TSFunction:
@@ -221,8 +211,6 @@ class TSFunction:
     def to_ts(self) -> str:
         sargs = self.ts_args()
         export = "export " if self.export else ""
-        # if self.body is not None:
-        #     return f"{export}const {self.name} = ({sargs}): {self.async_returntype} =>{self.ts_body()}"
         return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
 
     def ts_args(self) -> str:
@@ -232,17 +220,7 @@ class TSFunction:
         return self.to_ts()
 
     def anonymous(self) -> ZOD:
-        # z.function([f.type for f in self.args], r.returntype)
-        sargs = self.ts_args()
-        return ZOD(str_type=f"({sargs})=> {self.async_returntype.str_type}")
-
-    def is_typed(self) -> bool:
-        return all(
-            f.is_typed() for f in self.args
-        ) and self.returntype.str_type not in {
-            "any",
-            "unknown",
-        }
+        return ZZZ.function(self.args, self.async_returntype)
 
     @property
     def async_returntype(self) -> ZOD:
@@ -339,32 +317,31 @@ class TSBuilder:
             return self.forward_ref(typ.__forward_arg__)
 
         if hasattr(typ, "__origin__"):
-            cls = typ.__origin__
             # e.g. cls is the <class 'list'> while typ is list[arg]
+            cls = typ.__origin__
         else:
             cls = typ  # str, etc.
 
         is_type = isinstance(cls, type)
         if hasattr(typ, "__args__"):
-            iargs = (
+            iargs = [
                 self.type_to_zod(s, is_arg=True)
                 for s in typ.__args__
                 if s is not Ellipsis  # e.g. t.Tuple[int,...]
-            )
+            ]
 
             if is_type and issubclass(cls, Mapping):
                 k, v = iargs
                 args = ZZZ.map(k, v)
-                # IRC: args = self.z.map(k,v)
             else:
                 if is_type and issubclass(cls, tuple):
                     # tuple types
                     # we need to bail early here since
                     # we are not now a ts list (e.g. val[])
-                    return ZZZ.tuple(list(iargs))
+                    return ZZZ.tuple(iargs)
                 else:
                     # Union,List
-                    args = ZZZ.union(list(iargs))
+                    args = ZZZ.union(iargs)
         else:
             if is_type:
                 if cls not in self.TS:
@@ -475,6 +452,5 @@ class TSBuilder:
             return f"{{{args}}}"
         if isinstance(value, bool):
             return repr(value).lower()
-        # if isinstance(value, (float, int)):
-        #     return s
+
         return repr(value)
