@@ -28,8 +28,11 @@ class ZOD:
     def noarg(self, name: str) -> ZOD:
         return ZOD(key=name, prev=self)
 
-    def optional(self):
+    def optional(self) -> ZOD:
         return self.noarg("optional")
+
+    def as_async(self) -> ZOD:
+        return self.noarg("async")
 
     def to_z(self) -> str:
         key, rest = self.key, self.value
@@ -56,6 +59,7 @@ class ZOD:
         if key == "map":
             k, v = rest
             return f"{{ [name: {k.ts()}]: {v.ts()} }}"
+
         if key == "object":
             d = rest[0]
             d = [f"{k}: {v.ts()}" for k, v in d.items()]
@@ -81,7 +85,7 @@ class ZOD:
         ret = list(reversed(ret))
         return ret
 
-    def __str__(self):
+    def zod(self) -> str:
         ret = self._getlist()
         if ret and isinstance(ret[0], RefZod):
             r = []
@@ -94,17 +98,22 @@ class ZOD:
     def ts(self) -> str:
         zlist = self._getlist()
         r: list[str] = []
-        for z, p in zip(zlist, [ZOD(key="_start_")] + zlist[:-1]):
+        for z, p in zip(zlist, [self.noarg("_start_")] + zlist[:-1]):
             if z.key == "array":
-                assert p is not None
                 if p.key == "union":
                     # wrap...
                     r[-1] = f"({r[-1]})"
+            if z.key == "async":
+                r[-1] = f"Promise<{r[-1]}>"
+                continue
             r.append(z.to_ts())
         return "".join(r)
 
-    def __repr__(self):
-        return str(self)
+    def __str__(self):
+        return self.ts()
+
+    # def __repr__(self):
+    #     return str(self)
 
 
 @dataclass(repr=False)
@@ -140,6 +149,11 @@ class StringZod(ZOD):
 
     def to_ts(self):
         return "string"
+
+
+@dataclass(repr=False)
+class ZODType(ZOD):
+    pass
 
 
 class BigZed:
@@ -179,11 +193,23 @@ class BigZed:
     def array(self, val: ZOD) -> ZOD:
         return val.array()
 
-    def literal(self, val: Any) -> ZOD:
+    def literal(self, val: str) -> ZOD:
         return ZOD(key="literal", value=(val,))
 
     def optional(self, val: ZOD) -> ZOD:
         return val.optional()
 
+    def null(self) -> ZOD:
+        return self.noarg("null")
+
+    def file(self) -> ZOD:
+        return self.noarg("File")
+
     def ref(self, name: str) -> RefZod:
         return RefZod(key=name)
+
+    def function(self, args: list[ZOD], returntype: ZOD) -> ZOD:
+        return ZOD(key="function", value=(args, returntype))
+
+
+ZZZ = BigZed()

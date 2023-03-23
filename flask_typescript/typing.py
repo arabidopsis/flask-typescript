@@ -27,6 +27,9 @@ from pydantic import BaseModel
 from pydantic.fields import ModelField
 from werkzeug.datastructures import FileStorage
 
+from .zod2 import ZOD
+from .zod2 import ZZZ
+
 
 INDENT = "    "
 NL = "\n"
@@ -166,19 +169,19 @@ def get_annotations(
 @dataclass
 class TSField:
     name: str
-    type: str
+    type: ZOD
     requires_post: bool = False  # e.g. for FileStorage
     default: str | None = None
     colon: str = ": "
 
-    @property
-    def is_list(self) -> bool:
-        return self.type.endswith("[]")  # convention
+    # @property
+    # def is_list(self) -> bool:
+    #     return self.type.endswith("[]")  # convention
 
-    @property
-    def nested_type(self) -> str:
-        assert self.is_list, self
-        return self.type[:-2]
+    # @property
+    # def nested_type(self) -> str:
+    #     assert self.is_list, self
+    #     return self.type[:-2]
 
     def make_default(self, as_comment: bool = True) -> str:
         if as_comment:
@@ -198,7 +201,7 @@ class TSField:
         else:
             default = ""
         q = "?" if with_optional and self.default is not None else ""
-        return f"{self.name}{q}{self.colon}{self.type}{default}"
+        return f"{self.name}{q}{self.colon}{self.type.str_type}{default}"
 
     def __str__(self) -> str:
         return self.to_ts()
@@ -226,18 +229,20 @@ class TSInterface:
             f"{export}{self.interface} {self.name} {eq}{{{nl}{self.ts_fields()}{nl}}}"
         )
 
-    def ts_fields(self):
+    def ts_fields(self) -> str:
         nl = self.nl
         return nl.join(
             f"{self.indent}{f.to_ts(with_default=self.with_defaults, with_optional=True)}"
             for f in self.fields
         )
 
-    def anonymous(self) -> str:
+    def anonymous(self) -> ZOD:
         sfields = ", ".join(
             f.to_ts(with_default=self.with_defaults) for f in self.fields
         )
-        return f"{{ {sfields} }}"
+
+        # return ZZZ.object({f.name:f.type for f in self.fields})
+        return ZOD(str_type=f"{{ {sfields} }}")
 
     def is_typed(self) -> bool:
         return all(f.is_typed() for f in self.fields)
@@ -250,7 +255,7 @@ class TSInterface:
 class TSFunction:
     name: str
     args: list[TSField]
-    returntype: str
+    returntype: ZOD
 
     export: bool = True
     with_defaults: bool = True
@@ -295,11 +300,12 @@ class TSFunction:
     def __str__(self) -> str:
         return self.to_ts()
 
-    def anonymous(self) -> str:
+    def anonymous(self) -> ZOD:
+        # z.function([f.type for f in self.args], r.returntype)
         sargs = self.ts_args()
         # arrow = " =>" if self.body is None else ":"
         # return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
-        return f"({sargs})=> {self.async_returntype}"
+        return ZOD(str_type=f"({sargs})=> {self.async_returntype.str_type}")
 
     def is_typed(self) -> bool:
         return all(f.is_typed() for f in self.args) and self.returntype not in {
@@ -308,22 +314,27 @@ class TSFunction:
         }
 
     @property
-    def async_returntype(self) -> str:
+    def async_returntype(self) -> ZOD:
+        rt = self.returntype
         if self.isasync:
-            return f"Promise<{self.returntype}>"
-        return self.returntype
+            return rt.as_async()
+        return rt
 
 
-DEFAULTS: dict[type[Any], str] = {
-    str: "string",
-    int: "number",
-    float: "number",
-    type(None): "null",
-    bytes: "string",  # TODO see if this works
-    bool: "boolean",
-    decimal.Decimal: "number",
-    FileStorage: "File",
-    date: "string",
+def toz(s):
+    return getattr(ZZZ, s)()
+
+
+DEFAULTS: dict[type[Any], ZOD] = {
+    str: toz("string"),
+    int: toz("number"),
+    float: toz("number"),
+    type(None): toz("null"),
+    bytes: toz("string"),  # TODO see if this works
+    bool: toz("boolean"),
+    decimal.Decimal: toz("number"),
+    FileStorage: toz("File"),
+    date: toz("string"),
 }
 
 
@@ -364,17 +375,17 @@ class TSBuilder:
     def __call__(self, o: TSTypeable) -> TSThing:
         return self.get_type_ts(o)
 
-    def forward_ref(self, type_name: str) -> str:
+    def forward_ref(self, type_name: str) -> ZOD:
         if type_name in self.seen:
-            return type_name
+            return ZZZ.ref(type_name)
         g = self.current_module()
         if type_name in g:
             typ = g[type_name]
             if not isinstance(typ, str):
-                return self.type_to_str(typ)
+                return self.type_to_zod(typ)
         raise TypeError(f'unknown ForwardRef "{type_name}"')
 
-    def type_to_str(self, typ: type[Any], is_arg: bool = False) -> str:
+    def type_to_zod(self, typ: type[Any], is_arg: bool = False) -> ZOD:
         if is_dataclass_type(typ) or is_pydantic_type(typ):
             if (
                 self.is_being_built(typ)
@@ -385,7 +396,8 @@ class TSBuilder:
             ):  # recursive
                 if is_arg:
                     self.seen[typ.__name__] = typ.__module__
-                return typ.__name__  # just use name
+                # IRC: return self.z.ref(type.__name__)
+                return ZZZ.ref(typ.__name__)  # just use name
             ret = self.get_type_ts(typ)
             # we are going to annonymize it e.g. => {key: number[], key2:string}
             # because we don't need full `export type Name = {....}`
@@ -404,40 +416,36 @@ class TSBuilder:
         is_type = isinstance(cls, type)
         if hasattr(typ, "__args__"):
             iargs = (
-                self.type_to_str(s, is_arg=True)
+                self.type_to_zod(s, is_arg=True)
                 for s in typ.__args__
                 if s is not Ellipsis  # e.g. t.Tuple[int,...]
             )
 
             if is_type and issubclass(cls, Mapping):
                 k, v = iargs
-                args = f"{{ [name: {k}]: {v} }}"
+                args = ZZZ.map(k, v)
+                # IRC: args = self.z.map(k,v)
             else:
                 if is_type and issubclass(cls, tuple):
                     # tuple types
-                    args = "[" + ",".join(iargs) + "]"
                     # we need to bail early here since
                     # we are not now a ts list (e.g. val[])
-                    return args
+                    return ZZZ.tuple(list(iargs))
                 else:
                     # Union,List
-                    _args = sorted(set(iargs))
-                    if "null" in _args and _args[-1] != "null":
-                        _args.remove("null")
-                        _args = _args + ["null"]
-                    args = " | ".join(_args)
+                    args = ZZZ.union(list(iargs))
         else:
             if is_type:
                 if cls not in self.TS:
                     self.seen[cls.__name__] = cls.__module__
-                    return cls.__name__
+                    return ZZZ.ref(cls.__name__)
                 args = self.TS[cls]
             else:
                 if isinstance(cls, str) and not is_arg:
                     return self.forward_ref(cls)
                 if typ == Any:
-                    return "any"
-                args = self.ts_repr(cls)  # Literal
+                    return ZZZ.any()
+                args = ZZZ.literal(self.ts_repr(cls))  # Literal
 
         if (
             is_type
@@ -447,7 +455,7 @@ class TSBuilder:
                 (str, bytes),
             )  # these are both sequences but not arrays
         ):
-            args = f"({args})[]" if "|" in args else f"{args}[]"
+            args = args.array()
         return args
 
     def get_field_types(
@@ -458,10 +466,10 @@ class TSBuilder:
         a = get_annotations(cls, self.ns)
 
         for name, annotation in a.items():
-            ts_type_as_str = self.type_to_str(annotation.type, is_arg=is_arg)
+            ts_type_as_zod = self.type_to_zod(annotation.type, is_arg=is_arg)
             yield TSField(
                 name=name,
-                type=ts_type_as_str,
+                type=ts_type_as_zod,
                 requires_post=annotation.requires_post,
                 default=self.ts_repr(annotation.default)
                 if annotation.has_default
@@ -485,10 +493,12 @@ class TSBuilder:
         rt = [f for f in ft if f.name == "return"]
         if rt:
             returntype = rt[0].type
-            if returntype == "null":  # type(None) for a return type should mean void
-                returntype = "void"
+            if (
+                returntype.str_type == "null"
+            ):  # type(None) for a return type should mean void
+                returntype = ZZZ.void()
         else:
-            returntype = "unknown"
+            returntype = ZZZ.unknown()
 
         return TSFunction(name=func.__name__, args=args, returntype=returntype)
 
