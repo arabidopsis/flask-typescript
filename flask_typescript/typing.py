@@ -254,7 +254,7 @@ class TSFunction:
 
     export: bool = True
     with_defaults: bool = True
-    body: str | None = None
+    # body: str | None = None
     nl: str = NL
     indent: str = INDENT
     isasync: bool = False
@@ -270,36 +270,36 @@ class TSFunction:
     def to_ts(self, **kwargs) -> str:
         sargs = self.ts_args()
         export = "export " if self.export else ""
-        if self.body is None:
-            return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
-
-        return f"{export}const {self.name} = ({sargs}): {self.async_returntype} =>{self.ts_body()}"
+        # if self.body is not None:
+        #     return f"{export}const {self.name} = ({sargs}): {self.async_returntype} =>{self.ts_body()}"
+        return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
 
     def ts_args(self) -> str:
         return ", ".join(
             f.to_ts(
                 with_default=self.with_defaults,
                 with_optional=True,
-                as_comment=self.body is None,
+                as_comment=True,  # self.body is None,
             )
             for f in self.args
         )
 
-    def ts_body(self) -> str:
-        if self.body is None:
-            return ""
-        nl = self.nl
-        tab = f"{nl}{self.indent}"
-        body = tab.join(self.body.splitlines())
-        return f" {{{tab}{body}{tab}}}"
+    # def ts_body(self) -> str:
+    #     if self.body is None:
+    #         return ""
+    #     nl = self.nl
+    #     tab = f"{nl}{self.indent}"
+    #     body = tab.join(self.body.splitlines())
+    #     return f" {{{tab}{body}{tab}}}"
 
     def __str__(self) -> str:
         return self.to_ts()
 
     def anonymous(self) -> str:
         sargs = self.ts_args()
-        arrow = " =>" if self.body is None else ":"
-        return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
+        # arrow = " =>" if self.body is None else ":"
+        # return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
+        return f"({sargs})=> {self.async_returntype}"
 
     def is_typed(self) -> bool:
         return all(f.is_typed() for f in self.args) and self.returntype not in {
@@ -387,7 +387,9 @@ class TSBuilder:
                     self.seen[typ.__name__] = typ.__module__
                 return typ.__name__  # just use name
             ret = self.get_type_ts(typ)
-            self.built.remove(ret.name)  # we are going to annonymize it
+            # we are going to annonymize it e.g. => {key: number[], key2:string}
+            # because we don't need full `export type Name = {....}`
+            self.built.remove(ret.name)
             return ret.anonymous()
 
         if isinstance(typ, ForwardRef):
