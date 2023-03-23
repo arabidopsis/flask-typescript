@@ -110,10 +110,10 @@ def pyconverter(
     prefix: list[str] | None = None,
     hasdefault: bool = False,
 ) -> Callable[[JsonDict], MaybeModel]:
-    # we would really *really* like to use this
-    # simpler converter ... but mulitple selects
-    # with only one selected doesn't return a list
-    # so this may fail with a type_error.list
+    # we would really, *really* like to use this
+    # simpler converter ... but mulitple <select>s
+    # with only one option selected doesn't return a list
+    # so this may fail with a pydantic type_error.list
 
     def convert(values: JsonDict) -> MaybeModel:
         values = getdict(values, prefix)
@@ -156,7 +156,7 @@ def convert_from_schema(  # noqa: C901
                     return MISSING
                 return []
             v = values[name]
-            # ***all this to do this!!!!***
+            # **** all this to just do this!!!! ****
             if not isinstance(v, list):
                 v = [v]
             return v
@@ -218,18 +218,17 @@ def convert_from_schema(  # noqa: C901
         hasdefault2 = name not in required
         if "type" not in p:
             if "$ref" in p:
-                locators = [getname(p["$ref"])]
+                locators = [locate_schema(p["$ref"])]
             elif "anyOf" in p:
                 # this is X | Y
-                locators = [getname(t["$ref"]) for t in p["anyOf"]]
+                locators = [locate_schema(t["$ref"]) for t in p["anyOf"]]
             elif "oneOf" in p:
                 # this is what?
-                locators = [getname(t["$ref"]) for t in p["oneOf"]]
+                locators = [locate_schema(t["$ref"]) for t in p["oneOf"]]
             # elif 'allOf' in p:
             # non existent intersection type!
             # this is what should be a singleton
-            # typ = [getname(t['$ref']) for t in p['allOf']]
-            # oftype = 'allOf'
+            # typ = [locate_schema(t['$ref']) for t in p['allOf']]
             else:
                 raise TypeError(f"can't find type for {name}: {p}")
             ret[name] = subschemas(name, locators, hasdefault2)
@@ -259,7 +258,7 @@ def repr(v):
     return json.dumps(v)
 
 
-def getname(s: str) -> tuple[str, str]:
+def locate_schema(s: str) -> tuple[str, str]:
     "#/definitions/name"
     l, n = s.split("/")[-2:]
     return (l, n)
@@ -284,7 +283,7 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
         def gettype(p):
             if "type" not in p:
                 if "$ref" in p:
-                    _, typ = getname(p["$ref"])
+                    _, typ = locate_schema(p["$ref"])
                 elif "allOf" in p:
                     typ = "[" + " , ".join(gettype(t["$ref"]) for t in p["allOf"]) + "]"
                 elif "anyOf" in p:
@@ -547,13 +546,6 @@ class Api:
 
         return api_func  # type: ignore
 
-    # def cache_get_req_values(self) -> ImmutableMultiDict:
-    #     ret: ImmutableMultiDict
-    #     if hasattr(g, "_flask_typescript"):
-    #         return g._flask_typescript
-    #     g._flask_typescript = ret = self.get_req_values()
-    #     return ret
-
     def get_req_values(
         self,
         config: Config,
@@ -606,9 +598,7 @@ class Api:
         dataclasses: set[type[BaseModel]],
         file=sys.stdout,
     ) -> None:
-        # seen: set[str] = set()
         for model in dataclasses:
-            # print(to_ts(model, seen), file=file)
             print(cls.builder(model), file=file)
 
     def show_api(self, app: Flask, file=sys.stdout) -> None:
@@ -684,16 +674,15 @@ class DebugApi(Api):
 
         if from_jquery:
             if not multi(data):
-                raise TypeError("not a MultiDict")
+                raise TypeError("not a MultiDict for from_jquery")
             data = jquery_form(data)
         elif as_devalue:
             if multi(data):
-                raise TypeError("not a json object")
+                raise TypeError("not a json object for as_devalue")
             if isinstance(data, str):
                 from .devalue.parse import parse
 
                 data = parse(data)
-
         else:
             if multi(data):
                 data = dedottify(unflatten(data))

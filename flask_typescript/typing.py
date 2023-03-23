@@ -174,22 +174,17 @@ class TSInterface:
     interface: Literal["interface", "type"] = "interface"
 
     def to_ts(self) -> str:
+        def ts_fields() -> str:
+            nl = self.nl
+            return nl.join(f"{self.indent}{f.to_ts()}" for f in self.fields)
+
         export = "export " if self.export else ""
         nl = self.nl
         eq = "= " if self.interface == "type" else ""
-        return (
-            f"{export}{self.interface} {self.name} {eq}{{{nl}{self.ts_fields()}{nl}}}"
-        )
-
-    def ts_fields(self) -> str:
-        nl = self.nl
-        return nl.join(f"{self.indent}{f.to_ts()}" for f in self.fields)
+        return f"{export}{self.interface} {self.name} {eq}{{{nl}{ts_fields()}{nl}}}"
 
     def anonymous(self) -> ZOD:
         return ZZZ.object(self.fields)
-
-    # def is_typed(self) -> bool:
-    #     return all(f.is_typed() for f in self.fields)
 
     def __str__(self) -> str:
         return self.to_ts()
@@ -209,12 +204,12 @@ class TSFunction:
         return replace(self, args=a)
 
     def to_ts(self) -> str:
-        sargs = self.ts_args()
+        def ts_args() -> str:
+            return ", ".join(f.to_ts() for f in self.args)
+
+        sargs = ts_args()
         export = "export " if self.export else ""
         return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
-
-    def ts_args(self) -> str:
-        return ", ".join(f.to_ts() for f in self.args)
 
     def __str__(self) -> str:
         return self.to_ts()
@@ -292,6 +287,8 @@ class TSBuilder:
             typ = g[type_name]
             if not isinstance(typ, str):
                 return self.type_to_zod(typ)
+        if self.use_name:
+            return ZZZ.ref(type_name)
         raise TypeError(f'unknown ForwardRef "{type_name}"')
 
     def type_to_zod(self, typ: type[Any], is_arg: bool = False) -> ZOD:
@@ -305,7 +302,6 @@ class TSBuilder:
             ):  # recursive
                 if is_arg:
                     self.seen[typ.__name__] = typ.__module__
-                # IRC: return self.z.ref(type.__name__)
                 return ZZZ.ref(typ.__name__)  # just use name
             ret = self.get_type_ts(typ)
             # we are going to annonymize it e.g. => {key: number[], key2:string}
@@ -331,6 +327,7 @@ class TSBuilder:
             ]
 
             if is_type and issubclass(cls, Mapping):
+                # e.g. dict[str, int]
                 k, v = iargs
                 args = ZZZ.map(k, v)
             else:
