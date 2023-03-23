@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from pydantic.fields import ModelField
 from werkzeug.datastructures import FileStorage
 
+from .zod2 import TSField
 from .zod2 import ZOD
 from .zod2 import ZZZ
 
@@ -167,58 +168,13 @@ def get_annotations(
 
 
 @dataclass
-class TSField:
-    name: str
-    type: ZOD
-    requires_post: bool = False  # e.g. for FileStorage
-    default: str | None = None
-    colon: str = ": "
-
-    # @property
-    # def is_list(self) -> bool:
-    #     return self.type.endswith("[]")  # convention
-
-    # @property
-    # def nested_type(self) -> str:
-    #     assert self.is_list, self
-    #     return self.type[:-2]
-
-    def make_default(self, as_comment: bool = True) -> str:
-        if as_comment:
-            fmt = " /* ={} */"
-        else:
-            fmt = " ={}"
-        return "" if self.default is None else fmt.format(self.default)
-
-    def to_ts(
-        self,
-        with_default: bool = True,
-        with_optional: bool = False,
-        as_comment: bool = True,
-    ) -> str:
-        if with_default:
-            default = self.make_default(as_comment)
-        else:
-            default = ""
-        q = "?" if with_optional and self.default is not None else ""
-        return f"{self.name}{q}{self.colon}{self.type.str_type}{default}"
-
-    def __str__(self) -> str:
-        return self.to_ts()
-
-    def is_typed(self) -> bool:
-        return self.type not in {"any", "unknown"}
-
-
-@dataclass
 class TSInterface:
     name: str
     fields: list[TSField]
 
-    indent: str = INDENT
     export: bool = True
+    indent: str = INDENT
     nl: str = NL
-    with_defaults: bool = True
     interface: Literal["interface", "type"] = "interface"
 
     def to_ts(self) -> str:
@@ -231,15 +187,10 @@ class TSInterface:
 
     def ts_fields(self) -> str:
         nl = self.nl
-        return nl.join(
-            f"{self.indent}{f.to_ts(with_default=self.with_defaults, with_optional=True)}"
-            for f in self.fields
-        )
+        return nl.join(f"{self.indent}{f.to_ts()}" for f in self.fields)
 
     def anonymous(self) -> ZOD:
-        sfields = ", ".join(
-            f.to_ts(with_default=self.with_defaults) for f in self.fields
-        )
+        sfields = ", ".join(f.to_ts() for f in self.fields)
 
         # return ZZZ.object({f.name:f.type for f in self.fields})
         return ZOD(str_type=f"{{ {sfields} }}")
@@ -258,21 +209,16 @@ class TSFunction:
     returntype: ZOD
 
     export: bool = True
-    with_defaults: bool = True
     # body: str | None = None
     nl: str = NL
     indent: str = INDENT
     isasync: bool = False
 
-    @property
-    def requires_post(self) -> bool:
-        return any(f.requires_post for f in self.args)
-
     def remove_args(self, *args: str) -> TSFunction:
         a = [f for f in self.args if f.name not in set(args)]
         return replace(self, args=a)
 
-    def to_ts(self, **kwargs) -> str:
+    def to_ts(self) -> str:
         sargs = self.ts_args()
         export = "export " if self.export else ""
         # if self.body is not None:
@@ -280,22 +226,7 @@ class TSFunction:
         return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
 
     def ts_args(self) -> str:
-        return ", ".join(
-            f.to_ts(
-                with_default=self.with_defaults,
-                with_optional=True,
-                as_comment=True,  # self.body is None,
-            )
-            for f in self.args
-        )
-
-    # def ts_body(self) -> str:
-    #     if self.body is None:
-    #         return ""
-    #     nl = self.nl
-    #     tab = f"{nl}{self.indent}"
-    #     body = tab.join(self.body.splitlines())
-    #     return f" {{{tab}{body}{tab}}}"
+        return ", ".join(f.to_ts() for f in self.args)
 
     def __str__(self) -> str:
         return self.to_ts()
@@ -303,12 +234,12 @@ class TSFunction:
     def anonymous(self) -> ZOD:
         # z.function([f.type for f in self.args], r.returntype)
         sargs = self.ts_args()
-        # arrow = " =>" if self.body is None else ":"
-        # return f"({sargs}){arrow} {self.async_returntype}{self.ts_body()}"
         return ZOD(str_type=f"({sargs})=> {self.async_returntype.str_type}")
 
     def is_typed(self) -> bool:
-        return all(f.is_typed() for f in self.args) and self.returntype not in {
+        return all(
+            f.is_typed() for f in self.args
+        ) and self.returntype.str_type not in {
             "any",
             "unknown",
         }
@@ -467,10 +398,8 @@ class TSBuilder:
 
         for name, annotation in a.items():
             ts_type_as_zod = self.type_to_zod(annotation.type, is_arg=is_arg)
-            yield TSField(
+            yield ts_type_as_zod.field(
                 name=name,
-                type=ts_type_as_zod,
-                requires_post=annotation.requires_post,
                 default=self.ts_repr(annotation.default)
                 if annotation.has_default
                 else None,
@@ -492,9 +421,9 @@ class TSBuilder:
         args = [f for f in ft if f.name != "return"]
         rt = [f for f in ft if f.name == "return"]
         if rt:
-            returntype = rt[0].type
+            returntype = rt[0].anonymous()
             if (
-                returntype.str_type == "null"
+                returntype == ZZZ.null()
             ):  # type(None) for a return type should mean void
                 returntype = ZZZ.void()
         else:

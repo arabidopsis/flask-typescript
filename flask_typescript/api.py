@@ -488,7 +488,7 @@ class Api:
     ) -> DecoratedCallable:
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
-        self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
+        self.funcs.append(ts.anonymous().field(ts.name))
 
         asjson, embed, cargs = self.create_api(func)
 

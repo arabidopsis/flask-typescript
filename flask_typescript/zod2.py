@@ -17,6 +17,17 @@ class ZOD:
     def as_async(self) -> ZOD:
         return ZOD(str_type=f"Promise<{self.str_type}>")
 
+    def field(
+        self,
+        name: str,
+        default: str | None = None,
+    ) -> TSField:
+        return TSField(
+            str_type=self.str_type,
+            name=name,
+            default=default,
+        )
+
 
 class BigZed:
     def any(self) -> ZOD:
@@ -72,3 +83,27 @@ class BigZed:
 
 
 ZZZ = BigZed()
+
+
+@dataclass
+class TSField(ZOD):
+    name: str
+    default: str | None = None
+
+    def make_default(self) -> str:
+        fmt = " /* ={} */"
+        return "" if self.default is None else fmt.format(self.default)
+
+    def to_ts(self) -> str:
+        default = self.make_default()
+        q = "?" if self.default is not None else ""
+        return f"{self.name}{q}: {self.str_type}{default}"
+
+    def __str__(self) -> str:
+        return self.to_ts()
+
+    def is_typed(self) -> bool:
+        return self.str_type not in {"any", "unknown"}
+
+    def anonymous(self) -> ZOD:
+        return ZOD(str_type=self.str_type)
