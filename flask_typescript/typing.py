@@ -387,7 +387,7 @@ class TSBuilder:
                     self.seen[typ.__name__] = typ.__module__
                 return typ.__name__  # just use name
             ret = self.get_type_ts(typ)
-            self.built.remove(ret.name)  # we are going to annonomize it
+            self.built.remove(ret.name)  # we are going to annonymize it
             return ret.anonymous()
 
         if isinstance(typ, ForwardRef):
@@ -395,8 +395,9 @@ class TSBuilder:
 
         if hasattr(typ, "__origin__"):
             cls = typ.__origin__
+            # e.g. cls is the <class 'list'> while typ is list[arg]
         else:
-            cls = typ  # list, str, etc.
+            cls = typ  # str, etc.
 
         is_type = isinstance(cls, type)
         if hasattr(typ, "__args__"):
@@ -414,7 +415,7 @@ class TSBuilder:
                     # tuple types
                     args = "[" + ",".join(iargs) + "]"
                     # we need to bail early here since
-                    # we are not a list
+                    # we are not now a ts list (e.g. val[])
                     return args
                 else:
                     # Union,List
@@ -428,9 +429,6 @@ class TSBuilder:
                 if cls not in self.TS:
                     self.seen[cls.__name__] = cls.__module__
                     return cls.__name__
-                    # raise TypeError(
-                    #     f"unknown type: {typ.__qualname__} from {cls.__module__}"
-                    # )
                 args = self.TS[cls]
             else:
                 if isinstance(cls, str) and not is_arg:

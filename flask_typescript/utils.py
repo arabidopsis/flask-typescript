@@ -4,8 +4,11 @@ import re
 from contextlib import contextmanager
 from typing import Any
 from typing import Iterator
+from typing import TypeAlias
 
 from werkzeug.datastructures import MultiDict
+
+JsonDict: TypeAlias = dict[str, Any]
 
 ARG = re.compile(r"\[([^]]*)\]")
 
@@ -27,7 +30,7 @@ def flatten(json: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
             yield key, val
 
 
-def unflatten(md: MultiDict) -> dict[str, Any]:
+def unflatten(md: MultiDict) -> JsonDict:
     ret: dict[str, Any] = {}
     for key, val in md.items(multi=True):
         if key in ret:
@@ -42,7 +45,7 @@ def unflatten(md: MultiDict) -> dict[str, Any]:
     return ret
 
 
-def dedottify(json: dict[str, Any], recursive=False) -> dict[str, Any]:
+def dedottify(json: dict[str, Any], recursive=False) -> JsonDict:
     """undottify keys"""
     # {'a.b':1, 'a.c':2 , 'a.d': 3} => {a: {b:1,c:2, d:3}}
     ret: dict[str, Any] = {}
@@ -96,7 +99,7 @@ def jquery_keys(key: str) -> list[str]:
 # names that are just [0] are invalid e.g.:
 # [0]: val1
 # [1]: val2
-def jquery_json(form: MultiDict) -> dict[str, Any]:
+def jquery_json(form: MultiDict) -> JsonDict:
     ret: dict[str, Any] = {}
 
     def ensure(lst, idx):
@@ -105,7 +108,7 @@ def jquery_json(form: MultiDict) -> dict[str, Any]:
         while len(lst) <= idx:
             lst.append({})
 
-    for fullkey, val in form.items():
+    for fullkey, val in form.items(multi=True):
         keylist = jquery_keys(fullkey)
         tgt = ret
         prefix, key = keylist[:-1], keylist[-1]
@@ -134,23 +137,12 @@ def jquery_json(form: MultiDict) -> dict[str, Any]:
     return ret
 
 
-# def fix_jsondict(json: dict[str, Any]) -> ImmutableMultiDict:
-#     ijson = ImmutableMultiDict(json)
-#     print('XXX',ijson)
-#     ret = ImmutableMultiDict(
-#         flatten(ijson.items(multi=True)),
-#     )
-#     ret = ijson
-#     print('YYYY', ret)
-#     return ret
-
-
-def jquery_form(form: MultiDict) -> dict[str, Any]:
+def jquery_form(form: MultiDict) -> JsonDict:
     """Turn a jquery form dictionary into a dotted dictionary"""
     return dedottify(jquery_json(form))
 
 
-def multidict_json(form: MultiDict) -> dict[str, Any]:
+def multidict_json(form: MultiDict) -> JsonDict:
     return dedottify(unflatten(form))
 
 

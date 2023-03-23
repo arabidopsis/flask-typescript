@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import _MISSING_TYPE
+from dataclasses import dataclass
 from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
@@ -34,6 +36,7 @@ from .typing import TSField
 from .typing import TSInterface
 from .utils import dedottify
 from .utils import jquery_form
+from .utils import JsonDict
 from .utils import lenient_issubclass
 from .utils import maybe_close
 from .utils import multidict_json
@@ -41,17 +44,33 @@ from .utils import unflatten
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
-JsonDict: TypeAlias = dict[str, Any]
+
 MaybeDict: TypeAlias = dict[str, Any] | None
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
 
 
+@dataclass
+class Config:
+    as_devalue: bool | None = None
+    from_jquery: bool | None = None
+    onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None
+
+
+CamelCase = re.compile(r"(?<!^)(?=[A-Z])")
+
+
 class FlaskValueError(ValueError):
-    def __init__(self, exc: ValueError, loc: str, errtype: str = "unknown"):
+    """Create an Error similar to pydantic's ValidationError"""
+
+    def __init__(self, exc: ValueError, loc: str, errtype: str = "malformed"):
         super().__init__()
         self.exc = exc
         self.loc = loc
         self.errtype = errtype
+
+    @property
+    def exc_name(self) -> str:
+        return CamelCase.sub("_", self.exc.__class__.__name__).lower()
 
     def json(self, *, indent: None | int | str = 2) -> str:
         return json.dumps(self.errors(), indent=indent, default=pydantic_encoder)
@@ -61,7 +80,7 @@ class FlaskValueError(ValueError):
             dict(
                 loc=(self.loc,),
                 msg=str(self.exc),
-                type=f"value_error.{self.errtype}",
+                type=f"{self.exc_name}.{self.errtype}",
             ),
         ]
 
@@ -72,20 +91,17 @@ ExcFunc = TypeVar(
 )
 
 
-# def converter(
-#     model: type[BaseModel],
-#     prefix: list[str] | None = None,
-#     hasdefault: bool = False,
-# ) -> Callable[[JsonDict], MaybeModel]:
-#     cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
-
-#     def convert(values: JsonDict) -> MaybeModel:
-#         args = cvt(values)
-#         if args is None:
-#             return MISSING
-#         return model(**args)
-
-#     return convert
+def getdict(values: JsonDict, prefix: list[str] | None = None) -> JsonDict:
+    if prefix is None:
+        return values
+    for p in prefix:
+        if p in values:
+            values = values[p]
+            if not isinstance(values, dict):
+                raise ValueError(f"{'.'.join(prefix)}: bad path")
+        else:
+            return {}
+    return values
 
 
 def pyconverter(
@@ -93,146 +109,141 @@ def pyconverter(
     prefix: list[str] | None = None,
     hasdefault: bool = False,
 ) -> Callable[[JsonDict], MaybeModel]:
-    if prefix is None:
-        prefix = []
-    # cvt = convert_from_schema(model.schema(), prefix or [], hasdefault)
-
-    def getdict(values: JsonDict) -> JsonDict:
-        for p in prefix:  # type: ignore
-            if p in values:
-                values = values[p]
-                if not isinstance(values, dict):
-                    raise ValueError(f"{'.'.join(prefix)}: bad path")
-            else:
-                return {}
-        return values
+    # we would really really like to use this
+    # simpler converter ... but mulitple selects
+    # with only one selected doesn't return a list
+    # so this may fail with a type_error.list
 
     def convert(values: JsonDict) -> MaybeModel:
-        values = getdict(values)
+        values = getdict(values, prefix)
         if not values and hasdefault:
             return MISSING
+
         return model(**values)
 
     return convert
 
 
-# def convert_from_schema(
-#     schema: dict[str, Any],
-#     prefix: list[str],
-#     hasdefault: bool = False,
-# ) -> Callable[[JsonDict], MaybeDict]:
-#     def getdict(values: JsonDict) -> JsonDict:
-#         for p in prefix:
-#             if p in values:
-#                 values = values[p]
-#                 if not isinstance(values, dict):
-#                     raise ValueError(f"{'.'.join(prefix)}: bad path")
-#             else:
-#                 return {}
-#         return values
+def converter(
+    model: type[BaseModel],
+    *,
+    prefix: list[str] | None = None,
+    hasdefault: bool = False,
+) -> Callable[[JsonDict], MaybeModel]:
+    cvt = convert_from_schema(model.schema(), prefix=[], hasdefault=hasdefault)
 
-#     def mkgetlist(name: str, hasdefault: bool):
-#         # name = dotted_toname(name)
-#         # print('getting list', name)
+    def convert(values: JsonDict) -> MaybeModel:
+        values = getdict(values, prefix)
+        args = cvt(values)
+        if args is None:
+            return MISSING
+        return model(**args)
 
-#         def getlist(values: JsonDict):
-#             values = getdict(values)
-#             if name not in values:
-#                 if hasdefault:
-#                     return MISSING
-#                 return []
-#             return values[name]
+    return convert
 
-#         return getlist
 
-#     def mkgetval(name: str, hasdefault: bool):
-#         def getval(values: JsonDict):
-#             values = getdict(values)
-#             return values.get(name, MISSING)
+def convert_from_schema(
+    schema: dict[str, Any],
+    prefix: list[str],
+    hasdefault: bool = False,
+) -> Callable[[JsonDict], MaybeDict]:
+    def mkgetlist(name: str, typ: str, hasdefault: bool):
+        def getlist(values: JsonDict):
+            values = getdict(values, prefix)
+            if name not in values:
+                if hasdefault:
+                    return MISSING
+                return []
+            v = values[name]
+            # all this to do this!!!!
+            if not isinstance(v, list):
+                v = [v]
+            return v
 
-#         return getval
+        return getlist
 
-#     # def mkconvert(d: Callable[[ImmutableMultiDict], MaybeDict], hasdefault: bool):
-#     #     def convert(values: ImmutableMultiDict) -> MaybeDict:
-#     #         return d(values)
+    def mkgetval(name: str, typ: str, hasdefault: bool):
+        def getval(values: JsonDict):
+            values = getdict(values, prefix)
+            return values.get(name, MISSING)
 
-#     #     return convert
+        return getval
 
-#     def aschema(
-#         name: str,
-#         loc: str,
-#         n: str,
-#         hasdefault: bool,
-#     ) -> Callable[[JsonDict], MaybeDict]:
-#         schema2 = schema[loc][n]
-#         return convert_from_schema(
-#             schema2,
-#             prefix=prefix + [name],
-#             hasdefault=hasdefault,
-#         )
+    def aschema(
+        name: str,
+        loc: str,
+        n: str,
+        hasdefault: bool,
+    ) -> Callable[[JsonDict], MaybeDict]:
+        schema2 = schema[loc][n]
+        return convert_from_schema(
+            schema2,
+            prefix=prefix + [name],
+            hasdefault=hasdefault,
+        )
 
-#     def subschemas(
-#         name,
-#         lst: list[tuple[str, str]],
-#         hasdefault: bool,
-#     ) -> Callable[[JsonDict], MaybeDict]:
-#         cvts: list[Callable[[JsonDict], MaybeDict]] = []
-#         cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
+    def subschemas(
+        name,
+        lst: list[tuple[str, str]],
+        hasdefault: bool,
+    ) -> Callable[[JsonDict], MaybeDict]:
+        cvts: list[Callable[[JsonDict], MaybeDict]] = []
+        cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
 
-#         if len(cvts) == 1:
-#             return cvts[0]
+        if len(cvts) == 1:
+            return cvts[0]
 
-#         def convert_anyOf(values: JsonDict) -> MaybeDict:
-#             for cvt in cvts:
-#                 a = cvt(values)
-#                 if a is not None:
-#                     return a
-#             return None
+        def convert_anyOf(values: JsonDict) -> MaybeDict:
+            for cvt in cvts:
+                a = cvt(values)
+                if a is not None:
+                    return a
+            return None
 
-#         return convert_anyOf
+        return convert_anyOf
 
-#     required = set(schema.get("required", []))
-#     ret: dict[str, Callable[[JsonDict], Any]] = {}
+    required = set(schema.get("required", []))
+    ret: dict[str, Callable[[JsonDict], Any]] = {}
 
-#     for name, p in schema["properties"].items():
-#         hasdefault2 = name not in required
-#         if "type" not in p:
-#             if "$ref" in p:
-#                 typ = [getname(p["$ref"])]
-#             elif "anyOf" in p:
-#                 # this is X | Y
-#                 typ = [getname(t["$ref"]) for t in p["anyOf"]]
-#             elif "oneOf" in p:
-#                 # this is what?
-#                 typ = [getname(t["$ref"]) for t in p["oneOf"]]
-#             # elif 'allOf' in p:
-#             # non existent intersection type!
-#             # this is what should be a singleton
-#             # typ = [getname(t['$ref']) for t in p['allOf']]
-#             # oftype = 'allOf'
-#             else:
-#                 raise TypeError(f"can't find type for {name}: {p}")
-#             ret[name] = subschemas(name, typ, hasdefault2)
-#             continue
+    for name, p in schema["properties"].items():
+        hasdefault2 = name not in required
+        if "type" not in p:
+            if "$ref" in p:
+                locators = [getname(p["$ref"])]
+            elif "anyOf" in p:
+                # this is X | Y
+                locators = [getname(t["$ref"]) for t in p["anyOf"]]
+            elif "oneOf" in p:
+                # this is what?
+                locators = [getname(t["$ref"]) for t in p["oneOf"]]
+            # elif 'allOf' in p:
+            # non existent intersection type!
+            # this is what should be a singleton
+            # typ = [getname(t['$ref']) for t in p['allOf']]
+            # oftype = 'allOf'
+            else:
+                raise TypeError(f"can't find type for {name}: {p}")
+            ret[name] = subschemas(name, locators, hasdefault2)
+            continue
 
-#         typ = p["type"]
-#         if typ == "array":
-#             ret[name] = mkgetlist(name, hasdefault2)
-#         else:
-#             ret[name] = mkgetval(name, hasdefault2)
+        typ = p["type"]
+        if typ == "array":
+            ret[name] = mkgetlist(name, p["items"]["type"], hasdefault2)
+        else:
+            ret[name] = mkgetval(name, typ, hasdefault2)
 
-#     def convert(values: JsonDict) -> MaybeDict:
-#         args = {}
-#         for name, cvt in ret.items():
-#             v = cvt(values)
-#             if v is MISSING:
-#                 continue
-#             args[name] = v
-#         if not args and hasdefault:
-#             return None
-#         return args
+    def convert(values: JsonDict) -> MaybeDict:
+        args = {}
+        for name, cvt in ret.items():
+            v = cvt(values)
+            if v is MISSING:
+                continue
+            args[name] = v
+        if not args and hasdefault:
+            return None
+        return args
 
-#     return convert
+    return convert
 
 
 def repr(v):
@@ -353,18 +364,15 @@ class Api:
         as_devalue: bool | None = None,
         from_jquery: bool | None = None,
     ):
+        config = Config(onexc=onexc, as_devalue=as_devalue, from_jquery=from_jquery)
         if func is None:
             return lambda func: self.api(
                 func,
-                onexc=onexc,
-                as_devalue=as_devalue,
-                from_jquery=from_jquery,
+                config,
             )
         return self.api(
             func,
-            onexc=onexc,
-            as_devalue=as_devalue,
-            from_jquery=from_jquery,
+            config,
         )
 
     def add(self, cls: type[BaseModel]) -> None:
@@ -376,7 +384,7 @@ class Api:
     def create_api(
         self,
         func: DecoratedCallable,
-    ) -> tuple[bool, dict[str, Callable[[JsonDict], Any]]]:
+    ) -> tuple[bool, bool, dict[str, Callable[[JsonDict], Any]]]:
         # we just need a few access functions that
         # fetch into Flask ImmutableMultiDict object (e.g. request.values)
         # and to deal with simple non-pydantic types (e.g. list[int])
@@ -421,7 +429,7 @@ class Api:
                 # e.g. arg == int so int(value) acts as converter
                 if issubclass(arg, BaseModel):
                     self.dataclasses.add(arg)
-                    arg = pyconverter(arg)
+                    arg = converter(arg)
 
                 elif arg == FileStorage:
                     has_file_storage = True
@@ -430,7 +438,7 @@ class Api:
                 return lambda values: getseqvalue(values, name, typ, arg)
 
             elif issubclass(typ, BaseModel):
-                convert = pyconverter(
+                convert = converter(
                     typ,
                     prefix=[name] if embed else None,
                     hasdefault=name in defaults,
@@ -464,28 +472,29 @@ class Api:
             )
             self.dataclasses.add(pydant)  # type: ignore
 
-        return asjson, cargs
+        return asjson, embed, cargs
 
     def typename(self, func) -> str:
         return f"Func{funcname(func).title()}"
 
+    @property
+    def is_json(self):
+        return request.is_json
+
     def api(
         self,
         func: DecoratedCallable,
-        *,
-        onexc: ExcFunc | None = None,
-        as_devalue: bool | None = None,
-        from_jquery: bool | None = None,
+        config: Config,
     ) -> DecoratedCallable:
         ts = self.builder(func)
         ts = replace(ts, isasync=True)
         self.funcs.append(TSField(name=ts.name, type=ts.anonymous()))
 
-        asjson, cargs = self.create_api(func)
+        asjson, embed, cargs = self.create_api(func)
 
         def doexc(e):
-            if onexc is not None:
-                return onexc(e)
+            if config.onexc is not None:
+                return config.onexc(e)
             if self._onexc is not None:
                 return self._onexc(e)
             return self.onexc(e)
@@ -495,16 +504,15 @@ class Api:
             args = {}
             name = None
             # this is probably async...
-            values = self.get_req_values(as_devalue=as_devalue, from_jquery=from_jquery)
             try:
+                values = self.get_req_values(config)
                 for name, cvt in cargs.items():
                     v = cvt(values)
                     if v is not MISSING:
                         args[name] = v
 
             except ValidationError as e:
-                # TODO: want something like: e.loc = e.loc [name] + list(e.loc)
-                if name:
+                if name and (self.is_json or embed):
                     for err in e.errors():
                         err["loc"] = (name,) + err["loc"]
                 return doexc(e)
@@ -539,28 +547,33 @@ class Api:
 
     def get_req_values(
         self,
-        as_devalue: bool | None = None,
-        from_jquery: bool | None = None,
+        config: Config,
     ) -> JsonDict:
         # requires a request context
+
         if request.is_json:
-            as_devalue = self.as_devalue if as_devalue is None else as_devalue
+            as_devalue = (
+                self.as_devalue if config.as_devalue is None else config.as_devalue
+            )
             json = request.json
             assert json is not None
             if as_devalue:
                 from .devalue.parse import unflatten as str2json
 
                 json = str2json(json)
-            assert isinstance(json, dict)
+            assert isinstance(json, dict), type(json)
             return json
 
-        ret = CombinedMultiDict([request.args, request.form, request.files])  # type: ignore
-        from_jquery = self.from_jquery if from_jquery is None else from_jquery
+        ret: MultiDict = CombinedMultiDict([request.args, request.form, request.files])
+        from_jquery = (
+            self.from_jquery if config.from_jquery is None else config.from_jquery
+        )
         if from_jquery:
             json = jquery_form(ret)
         else:
             json = multidict_json(ret)
-        return json  # type: ignore
+
+        return json
 
     def onexc(self, e: ValidationError | FlaskValueError) -> Response:
         return self.make_response(e.json(), 400, {"Content-Type": "application/json"})
@@ -651,11 +664,12 @@ class DebugApi(Api):
 
     def get_req_values(
         self,
-        as_devalue: bool | None = None,
-        from_jquery: bool | None = None,
+        config: Config,
     ) -> JsonDict:
-        from_jquery = self.from_jquery if from_jquery is None else from_jquery
-        as_devalue = self.as_devalue if as_devalue is None else as_devalue
+        from_jquery = (
+            self.from_jquery if config.from_jquery is None else config.from_jquery
+        )
+        as_devalue = self.as_devalue if config.as_devalue is None else config.as_devalue
 
         data = self.data
 
@@ -681,3 +695,7 @@ class DebugApi(Api):
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
         return Response(stuff, code, headers)
+
+    @property
+    def is_json(self):
+        return not isinstance(self.data, MultiDict)

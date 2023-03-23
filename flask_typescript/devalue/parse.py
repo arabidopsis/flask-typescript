@@ -53,7 +53,8 @@ def unflatten(values: list | int, revivers: REVIVERS | None = None):  # noqa: C9
         if index in hydrated:
             return hydrated[index]
 
-        assert not isinstance(values, int)
+        if isinstance(values, int):
+            raise ValueError("expecting dict")
 
         value = values[index]
 

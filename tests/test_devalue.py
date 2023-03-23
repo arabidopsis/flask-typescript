@@ -65,3 +65,12 @@ class TestDeValue(unittest.TestCase):
         json = parse(s)
         data = {"inf": math.inf, "neginf": -math.inf, "isnan": math.nan}
         self.assertEqual(json, data)
+
+    def test_Rubbish(self):
+        """See if Rubbish data works"""
+
+        s = '[{"big":1,"myset":2,"a":3},["BigInt","14342153999777412545123"],["Set",3,4,5,6,7],1,3,4,5]'
+
+        with self.assertRaises(IndexError) as e:
+            _ = parse(s)
+        self.assertEqual(e.exception.args[0], "list index out of range")
