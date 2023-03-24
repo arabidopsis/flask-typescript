@@ -121,7 +121,7 @@ def arg5(extra: list[ArgXX]) -> Arg5:
 
 
 @app.post("/arg6")
-@api(from_jquery=True)
+@api(decoding="jquery")
 def arg6(extra: list[ArgXX]) -> Arg5:
     # formData =
 

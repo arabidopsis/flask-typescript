@@ -82,7 +82,7 @@ class TestApi(unittest.TestCase):
         class A(BaseModel):
             a: list[int]
 
-        api = DebugApi("Debug", data, from_jquery=True)
+        api = DebugApi("Debug", data, decoding="jquery")
         # because A is defined locally
         api.builder.ns = locals()
 
@@ -106,7 +106,7 @@ class TestApi(unittest.TestCase):
             a: list[int]
             myb: B
 
-        api = DebugApi("Debug", data, from_jquery=True)
+        api = DebugApi("Debug", data, decoding="jquery")
         # because A is defined locally
         api.builder.ns = locals()
 
@@ -128,7 +128,7 @@ class TestApi(unittest.TestCase):
             a: list[int]
             myb: B
 
-        api = DebugApi("Debug", data, as_devalue=True)
+        api = DebugApi("Debug", data, decoding="devalue")
         # because A is defined locally
         api.builder.ns = locals()
 
@@ -152,7 +152,7 @@ class TestApi(unittest.TestCase):
             date: date
             dt: datetime
 
-        api = DebugApi("Debug", data, as_devalue=True)
+        api = DebugApi("Debug", data, decoding="devalue")
         # because A is defined locally
         api.builder.ns = locals()
 

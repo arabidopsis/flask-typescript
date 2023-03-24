@@ -30,6 +30,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
 from .typing import INDENT
+from .typing import Literal
 from .typing import NL
 from .typing import TSBuilder
 from .typing import TSField
@@ -49,11 +50,12 @@ MaybeDict: TypeAlias = dict[str, Any] | None
 MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
 
+Decoding = Literal[None, "devalue", "jquery"]
+
 
 @dataclass
 class Config:
-    as_devalue: bool | None = None
-    from_jquery: bool | None = None
+    decoding: Decoding = None
     onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None
 
 
@@ -352,8 +354,7 @@ class Api:
         name: str,
         *,
         onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
-        from_jquery: bool = False,
-        as_devalue: bool = False,
+        decoding: Decoding = None,
     ):
         if "." in name:
             name = name.split(".")[-1].title()
@@ -361,8 +362,7 @@ class Api:
         self.dataclasses: set[type[BaseModel]] = set()
         self.funcs: list[TSField] = []
         self._onexc = onexc
-        self.from_jquery = from_jquery
-        self.as_devalue = as_devalue
+        self.decoding = decoding
         self.min_py = 1
 
     def __call__(
@@ -370,10 +370,9 @@ class Api:
         func: DecoratedCallable | None = None,
         *,
         onexc: ExcFunc | None = None,
-        as_devalue: bool | None = None,
-        from_jquery: bool | None = None,
+        decoding: Decoding = None,
     ):
-        config = Config(onexc=onexc, as_devalue=as_devalue, from_jquery=from_jquery)
+        config = Config(onexc=onexc, decoding=decoding)
         if func is None:
             return lambda func: self.api(
                 func,
@@ -552,14 +551,12 @@ class Api:
         config: Config,
     ) -> JsonDict:
         # requires a request context
+        decoding = self.decoding if config.decoding is None else config.decoding
 
         if request.is_json:
-            as_devalue = (
-                self.as_devalue if config.as_devalue is None else config.as_devalue
-            )
             json = request.json
             assert json is not None
-            if as_devalue:
+            if decoding == "devalue":
                 from .devalue.parse import unflatten as str2json
 
                 json = str2json(json)
@@ -567,10 +564,8 @@ class Api:
             return json
 
         ret: MultiDict = CombinedMultiDict([request.args, request.form, request.files])
-        from_jquery = (
-            self.from_jquery if config.from_jquery is None else config.from_jquery
-        )
-        if from_jquery:
+
+        if decoding == "jquery":
             json = jquery_form(ret)
         else:
             json = multidict_json(ret)
@@ -664,14 +659,12 @@ class DebugApi(Api):
         data: MultiDict | dict[str, Any],
         *,
         onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
-        from_jquery: bool = False,
-        as_devalue: bool = False,
+        decoding: Decoding = None,
     ):
         super().__init__(
             name,
             onexc=onexc,
-            from_jquery=from_jquery,
-            as_devalue=as_devalue,
+            decoding=decoding,
         )
         self.data = data
 
@@ -679,18 +672,15 @@ class DebugApi(Api):
         self,
         config: Config,
     ) -> JsonDict:
-        from_jquery = (
-            self.from_jquery if config.from_jquery is None else config.from_jquery
-        )
-        as_devalue = self.as_devalue if config.as_devalue is None else config.as_devalue
+        decoding = self.decoding if config.decoding is None else config.decoding
 
         data = self.data
 
-        if from_jquery:
+        if decoding == "jquery":
             if not multi(data):
                 raise TypeError("not a MultiDict for from_jquery")
             data = jquery_form(data)
-        elif as_devalue:
+        elif decoding == "devalue":
             if multi(data):
                 raise TypeError("not a json object for as_devalue")
             if isinstance(data, str):

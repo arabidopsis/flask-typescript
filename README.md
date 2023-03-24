@@ -1,6 +1,6 @@
 # flask-typescript
 
-typescript for [flask](https://flask.palletsprojects.com/en/2.2.x/)
+typescript for [flask](https://flask.palletsprojects.com/)
 based on [FastAPI](https://fastapi.tiangolo.com) and
 [pydantic](https://docs.pydantic.dev/) (on which this package depends).
 
@@ -36,10 +36,14 @@ def user_ok(user:User) -> User:
 # adds a `ts` subcommmand to flask
 api.init_app(app)
 ```
+You can run `flask ts` to generate some typescript types that can help keep your
+javascript client code in sync with your python api.
+
+Run  (say) `flask ts > src/types.d.ts`
 Then on the client we can do:
 
-```javascript
-async function user_ok(user) {
+```typescript
+async function user_ok(user:User): Promise<User> {
     const resp = await fetch('/user_ok', {
                 method:'post',
                 body:JSON.stringify(user),
@@ -51,19 +55,18 @@ async function user_ok(user) {
     if (!resp.ok) {
         throw new Error("no good!")
     }
-    return await resp.json()
+    return await resp.json() as User
 }
-const user = {name:'me', age: 61}
+const user:User = {name:'me', age: 61}
 const user2 = await user_ok(user)
 ```
 
-You can run `flask ts` to generate some typescript types that can help keep your
-javascript client code in sync with your python api.
+
 
 ## FormData
 
-```javascript
-async function user_ok(formData) {
+```typescript
+async function user_ok(formData:FormData): Promise<User> {
     const resp = await fetch('/user_ok', {
                 method:'post',
                 body:formData,
@@ -96,6 +99,7 @@ login.addEventListener('submit', async (e) => {
 * argument names or no? https://fastapi.tiangolo.com/tutorial/body-multiple-params
 * generate [zod](https://zod.dev/) verifiers from pydantic classes ?
 * Maybe a flag for deserialsation of [devalue](https://github.com/Rich-Harris/devalue) "json"
+  and also reserialsation in this format too?
 * Stream responses e.g. ServerSideEvent i.e. responses that are list[BaseModel], Iterator[BaseModel] etc.
 
 
