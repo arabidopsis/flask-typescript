@@ -622,12 +622,25 @@ class Api:
                 is_flag=True,
                 help="don't output interface(s)",
             )
-            def show_api(out: str | None = None, without_interface: bool = False):
+            @click.option(
+                "-s",
+                "--sort",
+                is_flag=True,
+                help="sort output of pydantic classes by name",
+            )
+            def show_api(
+                out: str | None = None,
+                without_interface: bool = False,
+                sort: bool = False,
+            ):
                 """Generate Typescript types for this Flask app."""
                 d: set[Api] = app.extensions["flask-typescript"]
                 dataclasses = set()
                 for api in d:
                     dataclasses |= api.dataclasses
+                if sort:
+                    dataclasses = set(sorted(dataclasses, key=lambda x: x.__name__))
+                    d = set(sorted(d, key=lambda x: x.name))
                 with maybe_close(out) as fp:
                     Api.show_dataclasses(dataclasses=dataclasses, file=fp)
                     if not without_interface:
