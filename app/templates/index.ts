@@ -1,4 +1,4 @@
-import { asjson, serializeFormData, findEntry } from './lib'
+import { asjson, serializeFormData, findErrors } from './lib'
 (function () {
     const form = document.getElementById('myform') as HTMLFormElement
     const result = document.getElementById('result') as HTMLElement
@@ -21,8 +21,8 @@ import { asjson, serializeFormData, findEntry } from './lib'
             json_result.textContent = JSON.stringify(json)
             console.log(resp.ok, json, new Date(json.date))
             if (resp.status === 400) {
-                for (const [i, msg] of findEntry(form, json)) {
-                    (i as HTMLElement).classList.add('invalid')
+                for (const [i, msg] of findErrors(form, json)) {
+                    i.classList.add('invalid')
                 }
             }
 
@@ -39,6 +39,7 @@ import { asjson, serializeFormData, findEntry } from './lib'
             console.log(resp1.ok, json1)
         } catch (e) {
             console.log('err', e)
+            result.textContent = `Error: ${e}\n`;
         }
 
     })

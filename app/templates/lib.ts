@@ -63,16 +63,16 @@ export async function serializeFormData(formData: FormData): Promise<Record<stri
 };
 
 
-export function findEntry(form: HTMLFormElement, errors: ValidationError[]): [Element, string][] {
-    const ret: [Element, string][] = []
+export function findErrors(form: HTMLFormElement, errors: ValidationError[]): [HTMLElement, string][] {
+    const ret: [HTMLElement, string][] = []
     for (const error of errors) {
         const name: string = error.loc.join('.') as string
-        let i = form.elements.namedItem(name)
+        let i = form.elements.namedItem(name) as HTMLElement
         if (i === null) {
             continue
         }
         if (i instanceof RadioNodeList) {
-            i = i.item(0) as Element
+            i = i.item(0) as HTMLElement
             if (i === null) {
                 continue
             }
