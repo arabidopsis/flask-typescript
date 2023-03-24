@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import date  # noqa:
+from pathlib import Path
 
 from flask import Flask
 from flask import make_response
 from flask import render_template
 from flask import Response
+from flask import send_file
 from pydantic import BaseModel
 from pydantic import Field
 from werkzeug.datastructures import FileStorage
@@ -58,6 +60,14 @@ api = Api("Base")
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/<path>")
+def jsstatic(path: str):
+    """for javascript module imports e.g. import {x} from './lib'"""
+    p = Path(path)
+    p = p.parent / "templates" / (p.name + ".js" if not p.name.endswith(".js") else "")
+    return send_file(p)
 
 
 def onexc(e) -> Response:

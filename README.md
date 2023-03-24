@@ -57,7 +57,7 @@ const user = {name:'me', age: 61}
 const user2 = await user_ok(user)
 ```
 
-You can run `flask ts` to generate some typescript types can help keep your
+You can run `flask ts` to generate some typescript types that can help keep your
 javascript client code in sync with your python api.
 
 ## FormData
@@ -75,7 +75,7 @@ async function user_ok(formData) {
     return await resp.json()
 }
 const login = document.forms['login']
-login.addEventListener('submit', async e => {
+login.addEventListener('submit', async (e) => {
     e.preventDefault()
     const user2 = await user_ok(new FormData(login))
 })

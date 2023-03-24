@@ -111,7 +111,7 @@ def pyconverter(
     hasdefault: bool = False,
 ) -> Callable[[JsonDict], MaybeModel]:
     # we would really, *really* like to use this
-    # simpler converter ... but mulitple <select>s
+    # - simpler - converter ... but mulitple <select>s
     # with only one option selected doesn't return a list
     # so this may fail with a pydantic type_error.list
 
@@ -131,6 +131,7 @@ def converter(
     prefix: list[str] | None = None,
     hasdefault: bool = False,
 ) -> Callable[[JsonDict], MaybeModel]:
+    """Complex converter necessitated by select problems (see note above)"""
     cvt = convert_from_schema(model.schema(), prefix=[], hasdefault=hasdefault)
 
     def convert(values: JsonDict) -> MaybeModel:
@@ -156,7 +157,7 @@ def convert_from_schema(  # noqa: C901
                     return MISSING
                 return []
             v = values[name]
-            # **** all this to just do this!!!! ****
+            # **** all this to just check this!!!! ****
             if not isinstance(v, list):
                 v = [v]
             return v

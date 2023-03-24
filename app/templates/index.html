@@ -50,18 +50,63 @@
     <h2>Tests of pydantic for Flask</h2>
 
     <a href="https://developer.mozilla.org/en-US/docs/Learn/Forms">MDN notes on forms</a>
-    Add <code>onkeydown="return event.key != 'Enter';"</code> to form element to prevent
-    form submission on <code>Enter</code>
+    <p>
+        Want to add simple form verification to Flask similar to FastAPI but
+        targetting Typescript and not OpenAPI (which is cute but useless - at least for web developers ...)
+    </p>
+
+    <p>
+    <h3>Issues</h3>
+    <ul>
+        <li>Need to check form submission both on the client and the server... :(</li>
+        <li>Unchecked checkboxes are not sent by form submission so you need to add
+            a default <code>false</code> to any boolean attribute</li>
+        <li><code>multiple</code> selects if unselected (and not <code>required</code>) will
+            be the empty list </li>
+        <li>Add <code>onkeydown="return event.key != 'Enter';"</code> to form element to prevent
+            form submission on <code>Enter</code> (will break <code>textarea</code> inputs though...</li>)
+        <li>We can use <code>required</code> and <code>type="number"</code> and <code>max</code> etc
+            to ensure a cleaner submit, but... it can only do so much with out extensive javascript.
+            <code>flask-typescript</code> will return a JSON error that will (hopefully) identify the
+            problem... need a js library to help with this ... sigh 😩.
+            Very hard to give good feedback to user when "something goes wrong".
+        </li>
+    </ul>
+    </p>
     <hr />
+    Targetting
+    <pre>
+    @app.post("/full")
+    @api
+    def full(arg: Arg, extra: int = 1) -> Arg:
+        arg.selected = arg.selected * extra
+        arg.date = arg.date.today()
+        return arg
+    </pre>
+    Where
+    <pre>
+        class Arg(BaseModel):
+            query: str
+            selected: list[int]
+            doit: bool = False  # unchecked checkboxes are not sent so default to False
+            date: date
+            val: float = Field(gt=0)
+            arg5: Arg5  # name="arg5.query"
+            checked: list[str] = ["aaa"]
+    </pre>
+    and (using dotted names...)
+    <pre>
+    class Arg5(BaseModel):
+        query: str
+    </pre>
+    So this is the form to target this endpoint...
     <form id="myform" method='post' action="{{url_for('full')}}">
         <button type="submit">Submit</button>
         <br />
         Simple text
         <dfn>query</dfn> <code>str</code>: {#<input type="text" name="query" value="c" required /> #}
         <textarea name="query" required>ccc</textarea>
-        <br />
-        boolean
-        <dfn>doit</dfn> <code>bool</code>: <input type="checkbox" name="doit" />
+
         <br />
         <fieldset>
             <legend>Some numbers</legend>
@@ -73,6 +118,10 @@
                 <option>4</option>
             </select>
         </fieldset>
+        <br />
+        boolean
+        <dfn>doit</dfn> <code>bool</code>: <input type="checkbox" name="doit" />
+        Remember to add a default <code>False</code> to the pydantic attribute
         <br />
         <dfn>extra</dfn> <code>int</code>: <input type="number" name="extra" value="5" />
         <br />
@@ -121,8 +170,11 @@
     </form>
     <pre id="filestorage-result"></pre>
 </body>
-<script>
+<script type="module">
     {% include "index.js" %}
+</script>
+<script type="module">
+    {% include "extra.js" %}
 </script>
 
 </html>
