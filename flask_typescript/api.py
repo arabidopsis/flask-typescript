@@ -30,6 +30,7 @@ from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
+from .types import Error
 from .types import ErrorDict
 from .types import Success
 from .typing import INDENT
@@ -593,13 +594,15 @@ class Api:
         return json
 
     def onexc(self, e: ValidationError | FlaskValueError, result: bool) -> Response:
-        from .types import Error
-
         if not result:
             v = e.json()
         else:
             v = tojson(Error(error=e.errors()))
-        return self.make_response(v, 400, {"Content-Type": "application/json"})
+        return self.make_response(
+            v,
+            200 if result else 400,
+            {"Content-Type": "application/json"},
+        )
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
         return make_response(stuff, code, headers)

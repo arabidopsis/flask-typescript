@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from dataclasses import dataclass
 
 
@@ -7,8 +8,9 @@ class ZOD:
     def __str__(self) -> str:
         return self.to_ts()
 
+    @abstractmethod
     def to_ts(self) -> str:
-        raise NotImplementedError()
+        raise NotImplementedError("need to implement typscript generation")
 
     def array(self) -> ZOD:
         ts = self.to_ts()

@@ -10,4 +10,10 @@ tests:
 export:
 	poetry export --without-hashes > requirements.txt
 
-.PHONY: tests export ts pre-commit
+build:
+	poetry build
+
+generate:
+	PYTHONPATH='..' python -m tests.test_typescript > tests/resources/tstext.ts
+
+.PHONY: tests export ts pre-commit generate

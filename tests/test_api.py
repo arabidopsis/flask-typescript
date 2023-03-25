@@ -193,3 +193,39 @@ class TestApi(unittest.TestCase):
         json = result.json
         self.assertTrue(json.get("success"))
         self.assertEqual(A(**json["result"]), A(a=3, b="2"))
+
+    def test_ResultFail(self) -> None:
+        """Test result fail"""
+        from flask_typescript.types import Error
+
+        class A(BaseModel):
+            a: int
+            b: str
+
+        def func(aa: A, c: B) -> A:
+            aa.a += 2
+            return aa
+
+        data: MultiDict = ImmutableMultiDict(
+            [("aa.a", "s"), ("aa.b", "2"), ("c.b", "3")],
+        )
+
+        api = DebugApi("Debug", data, result=True)
+        # because A is defined locally
+        api.builder.ns = locals()
+
+        ff = api(func)
+
+        result = ff()
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.is_json)
+        json = result.json
+        self.assertFalse(json.get("success"))
+        errors = [
+            {
+                "loc": ("aa", "a"),
+                "msg": "value is not a valid integer",
+                "type": "type_error.integer",
+            },
+        ]
+        self.assertEqual(Error(**json), Error(error=errors))
