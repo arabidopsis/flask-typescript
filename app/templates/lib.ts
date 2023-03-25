@@ -2,6 +2,7 @@ export type Json = string | string[] | { [key: string]: Json };
 export type ValidationError = {
     loc: string[]
     msg: string
+    type: string
 }
 
 export function asjson(obj: any): RequestInit {

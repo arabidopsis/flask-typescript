@@ -120,11 +120,9 @@ def arg5(extra: list[ArgXX]) -> Arg5:
     return Arg5(query=extra[0].query)
 
 
-@app.post("/arg6")
+@app.get("/arg6")
 @api(decoding="jquery")
 def arg6(extra: list[ArgXX]) -> Arg5:
-    # formData =
-
     return Arg5(query=extra[0].query)
 
 

@@ -35,7 +35,10 @@ class Arg(BaseModel):
     checked: list[str] = ["aaa"]
 
 
-def reader(filename: str):
+KEY = "//>"
+
+
+def model_reader(filename: str) -> dict[str, str]:
     import pathlib
 
     p = pathlib.Path(__file__).parent / "resources" / filename
@@ -44,17 +47,17 @@ def reader(filename: str):
         typ: list[str] = []
         name = ""
         for line in fp:
-            if line.startswith("//>"):
+            if line.startswith(KEY):
                 if typ:
                     e = "".join(typ)
-                    res[name] = e[:-1]
-                name = line[3:].strip()
+                    res[name] = e.rstrip()
+                name = line[len(KEY) :].strip()
                 typ = []
             else:
                 typ.append(line)
         if typ:
             e = "".join(typ)
-            res[name] = e[:-1]
+            res[name] = e.rstrip()
     return res
 
 
@@ -72,13 +75,13 @@ def generate():
     for name, model in Models.items():
         t = builder(model)
         s = t.to_ts()
-        print(f"//>{name}")
+        print(f"{KEY}{name}")
         print(s)
 
 
 class TestModels(unittest.TestCase):
     def setUp(self):
-        self.Res = reader("tstext.ts")
+        self.Res = model_reader("tstext.ts")
         self.builder = TSBuilder()
         self.Models = get_models()
 

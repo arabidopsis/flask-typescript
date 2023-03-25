@@ -33,7 +33,6 @@ class TestFlask(unittest.TestCase):
         """Flask list as JSON"""
         from .app import Arg5
 
-        # data=ImmutableMultiDict([('extra.query','a'), ('extra.query', 'b')])
         with self.client:
             response = self.client.post(
                 "/arg5",
@@ -51,7 +50,7 @@ class TestFlask(unittest.TestCase):
 
         data = ImmutableMultiDict([("extra[0][query]", "a"), ("extra[1][query]", "b")])
         with self.client:
-            response = self.client.post("/arg6", data=data)
+            response = self.client.get("/arg6", data=data)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)
         self.assertEqual(Arg5(**response.json), Arg5(query="a"))
