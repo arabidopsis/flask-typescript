@@ -12,6 +12,7 @@ from inspect import signature
 from types import FunctionType
 from typing import Any
 from typing import Callable
+from typing import cast
 from typing import get_type_hints
 from typing import TypeAlias
 from typing import TypeGuard
@@ -29,6 +30,8 @@ from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
+from .types import ErrorDict
+from .types import Success
 from .typing import INDENT
 from .typing import Literal
 from .typing import NL
@@ -48,15 +51,20 @@ DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
 MaybeDict: TypeAlias = dict[str, Any] | None
 MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
-MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE  # MISSING
+MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
 
 Decoding = Literal[None, "devalue", "jquery"]
+
+
+def tojson(v: Any, indent: None | int | str = 2) -> str:
+    return json.dumps(v, indent=indent, default=pydantic_encoder)
 
 
 @dataclass
 class Config:
     decoding: Decoding = None
-    onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None
+    onexc: Callable[[list[ErrorDict]], Response] | None = None
+    result: bool | None = None
 
 
 CamelCase = re.compile(r"(?<!^)(?=[A-Z])")
@@ -76,9 +84,9 @@ class FlaskValueError(ValueError):
         return CamelCase.sub("_", self.exc.__class__.__name__).lower()
 
     def json(self, *, indent: None | int | str = 2) -> str:
-        return json.dumps(self.errors(), indent=indent, default=pydantic_encoder)
+        return tojson(self.errors(), indent=indent)
 
-    def errors(self):
+    def errors(self) -> list[ErrorDict]:
         return [
             dict(
                 loc=(self.loc,),
@@ -88,9 +96,13 @@ class FlaskValueError(ValueError):
         ]
 
 
+# ExcFunc = TypeVar(
+#     "ExcFunc",
+#     bound=Callable[[ValidationError | FlaskValueError], Response],
+# )
 ExcFunc = TypeVar(
     "ExcFunc",
-    bound=Callable[[ValidationError | FlaskValueError], Response],
+    bound=Callable[[list[ErrorDict]], Response],
 )
 
 
@@ -353,8 +365,9 @@ class Api:
         self,
         name: str,
         *,
-        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
+        onexc: Callable[[list[ErrorDict]], Response] | None = None,
         decoding: Decoding = None,
+        result: bool = False,
     ):
         if "." in name:
             name = name.split(".")[-1].title()
@@ -364,6 +377,7 @@ class Api:
         self._onexc = onexc
         self.decoding = decoding
         self.min_py = 1
+        self.result = result
 
     def __call__(
         self,
@@ -371,8 +385,9 @@ class Api:
         *,
         onexc: ExcFunc | None = None,
         decoding: Decoding = None,
+        result: bool | None = None,
     ):
-        config = Config(onexc=onexc, decoding=decoding)
+        config = Config(onexc=onexc, decoding=decoding, result=result)
         if func is None:
             return lambda func: self.api(
                 func,
@@ -495,17 +510,20 @@ class Api:
         config: Config,
     ) -> DecoratedCallable:
         ts = self.builder(func)
+        result = config.result if config.result is not None else self.result
+        if result:
+            ts = replace(ts, result=result)
         ts = replace(ts, isasync=True)
         self.funcs.append(ts.anonymous().field(ts.name))
 
         asjson, embed, cargs = self.create_api(func)
 
-        def doexc(e):
-            if config.onexc is not None:
-                return config.onexc(e)
-            if self._onexc is not None:
-                return self._onexc(e)
-            return self.onexc(e)
+        def doexc(e: ValidationError | FlaskValueError) -> Response:
+            onexc = config.onexc or self._onexc
+            if onexc is not None:
+                errs = cast(list[ErrorDict], e.errors())
+                return onexc(errs)
+            return self.onexc(e, result=result)
 
         @wraps(func)
         def api_func(*_args, **kwargs):
@@ -536,6 +554,8 @@ class Api:
                     raise ValueError(
                         f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
                     )
+                if result:
+                    ret = Success(result=ret)
                 ret = self.make_response(
                     ret.json(),
                     200,
@@ -572,8 +592,14 @@ class Api:
 
         return json
 
-    def onexc(self, e: ValidationError | FlaskValueError) -> Response:
-        return self.make_response(e.json(), 400, {"Content-Type": "application/json"})
+    def onexc(self, e: ValidationError | FlaskValueError, result: bool) -> Response:
+        from .types import Error
+
+        if not result:
+            v = e.json()
+        else:
+            v = tojson(Error(error=e.errors()))
+        return self.make_response(v, 400, {"Content-Type": "application/json"})
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
         return make_response(stuff, code, headers)
@@ -637,6 +663,9 @@ class Api:
                     dataclasses = set(sorted(dataclasses, key=lambda x: x.__name__))
                     d = set(sorted(d, key=lambda x: x.name))
                 with maybe_close(out) as fp:
+                    from .preamble import PREAMBLE
+
+                    print(PREAMBLE, file=fp)
                     Api.show_dataclasses(dataclasses=dataclasses, file=fp)
                     if not without_interface:
                         for api in d:
@@ -658,13 +687,15 @@ class DebugApi(Api):
         name: str,
         data: MultiDict | dict[str, Any],
         *,
-        onexc: Callable[[ValidationError | FlaskValueError], Response] | None = None,
+        onexc: Callable[[list[ErrorDict]], Response] | None = None,
         decoding: Decoding = None,
+        result: bool = False,
     ):
         super().__init__(
             name,
             onexc=onexc,
             decoding=decoding,
+            result=result,
         )
         self.data = data
 

@@ -198,6 +198,7 @@ class TSFunction:
 
     export: bool = True
     isasync: bool = False
+    result: bool = False
 
     def remove_args(self, *args: str) -> TSFunction:
         a = [f for f in self.args if f.name not in set(args)]
@@ -220,6 +221,8 @@ class TSFunction:
     @property
     def async_returntype(self) -> ZOD:
         rt = self.returntype
+        if self.result:
+            rt = rt.as_result()
         if self.isasync:
             return rt.as_async()
         return rt

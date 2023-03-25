@@ -24,6 +24,7 @@ class TestApi(unittest.TestCase):
             b: str
 
         def func(a: A, c: B) -> A:
+            assert c.b == "3"
             a.a += 2
             return a
 
@@ -164,3 +165,31 @@ class TestApi(unittest.TestCase):
         result = ff()
         self.assertEqual(result.status_code, 200)
         self.assertEqual(A(**result.json), A(date=date.today(), dt=dt))
+
+    def test_Result(self) -> None:
+        """Test result"""
+
+        class A(BaseModel):
+            a: int
+            b: str
+
+        def func(a: A, c: B) -> A:
+            assert c.b == "3"
+            a.a += 2
+            return a
+
+        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
+        # data = ImmutableMultiDict(flatten({'a':{'a':'1', 'b': '2'}, 'c': {'b':'3'}}))
+
+        api = DebugApi("Debug", data, result=True)
+        # because A is defined locally
+        api.builder.ns = locals()
+
+        ff = api(func)
+
+        result = ff()
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.is_json)
+        json = result.json
+        self.assertTrue(json.get("success"))
+        self.assertEqual(A(**json["result"]), A(a=3, b="2"))

@@ -18,6 +18,9 @@ class ZOD:
     def as_async(self) -> ZOD:
         return StrZOD(str_type=f"Promise<{self.to_ts()}>")
 
+    def as_result(self) -> ZOD:
+        return StrZOD(str_type=f"Result<{self.to_ts()}>")
+
     def field(
         self,
         name: str,

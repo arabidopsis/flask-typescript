@@ -54,7 +54,7 @@ class ArgXX(BaseModel):
 
 app = Flask(__name__)
 
-api = Api("Base")
+api = Api("Base", result=False)
 
 
 @app.get("/")
@@ -71,7 +71,7 @@ def jsstatic(path: str):
 
 
 def onexc(e) -> Response:
-    ret = api.onexc(e)
+    ret = api.onexc(e, result=False)
     ret.headers["X-myexc"] = "true"
     return ret
 
