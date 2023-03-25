@@ -4,6 +4,7 @@ export type ValidationError = {
     msg: string
     type: string
 }
+export type Result<T> = { success: true, result: T } | { success: false, error: ValidationError }
 
 export function asjson(obj: any): RequestInit {
     return {
