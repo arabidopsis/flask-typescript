@@ -54,7 +54,12 @@ MaybeDict: TypeAlias = dict[str, Any] | None
 MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
 
-Decoding = Literal[None, "devalue", "jquery"]
+Decoding: TypeAlias = Literal[None, "devalue", "jquery"]
+ExcFunc: TypeAlias = Callable[[list[ErrorDict], bool], Response]
+# ExcFunc = TypeVar(
+#     "ExcFunc",
+#     bound=Callable[[list[ErrorDict],bool], Response],
+# )
 
 
 def tojson(v: Any, indent: None | int | str = 2) -> str:
@@ -64,7 +69,7 @@ def tojson(v: Any, indent: None | int | str = 2) -> str:
 @dataclass
 class Config:
     decoding: Decoding = None
-    onexc: Callable[[list[ErrorDict]], Response] | None = None
+    onexc: ExcFunc | None = None
     result: bool | None = None
 
 
@@ -95,16 +100,6 @@ class FlaskValueError(ValueError):
                 type=f"{self.exc_name}.{self.errtype}",
             ),
         ]
-
-
-# ExcFunc = TypeVar(
-#     "ExcFunc",
-#     bound=Callable[[ValidationError | FlaskValueError], Response],
-# )
-ExcFunc = TypeVar(
-    "ExcFunc",
-    bound=Callable[[list[ErrorDict]], Response],
-)
 
 
 def getdict(values: JsonDict, prefix: list[str] | None = None) -> JsonDict:
@@ -366,7 +361,7 @@ class Api:
         self,
         name: str,
         *,
-        onexc: Callable[[list[ErrorDict]], Response] | None = None,
+        onexc: ExcFunc | None = None,
         decoding: Decoding = None,
         result: bool = False,
     ):
@@ -482,7 +477,7 @@ class Api:
 
         cargs = {name: cvt(name, t) for name, t in args.items()}
 
-        asjson = "return" in hints and issubclass(hints["return"], BaseModel)
+        asjson = "return" in hints and lenient_issubclass(hints["return"], BaseModel)
         # todo check for iterator[BaseModel] too...
         if asjson:
             self.dataclasses.add(hints["return"])
@@ -523,7 +518,7 @@ class Api:
             onexc = config.onexc or self._onexc
             if onexc is not None:
                 errs = cast(list[ErrorDict], e.errors())
-                return onexc(errs)
+                return onexc(errs, result)
             return self.onexc(e, result=result)
 
         @wraps(func)
@@ -690,7 +685,7 @@ class DebugApi(Api):
         name: str,
         data: MultiDict | dict[str, Any],
         *,
-        onexc: Callable[[list[ErrorDict]], Response] | None = None,
+        onexc: ExcFunc | None = None,
         decoding: Decoding = None,
         result: bool = False,
     ):
