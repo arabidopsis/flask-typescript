@@ -27,9 +27,9 @@ from pydantic import BaseModel
 from pydantic.fields import ModelField
 from werkzeug.datastructures import FileStorage
 
-from .zod2 import TSField
-from .zod2 import ZOD
-from .zod2 import ZZZ
+from .zod import TSField
+from .zod import ZOD
+from .zod import ZZZ
 
 
 INDENT = "    "

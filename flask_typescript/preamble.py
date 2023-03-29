@@ -8,5 +8,7 @@ export type ValidationError = {
     type: string
 }[]
 
-export type Result<T> = { success: true, result: T } | { success: false, error: ValidationError }
+export type Result<T> =
+    | { success: true, result: T }
+    | { success: false, error: ValidationError }
 """
