@@ -24,7 +24,7 @@ class TestApi(unittest.TestCase):
             b: str
 
         def func(a: A, c: B) -> A:
-            assert c.b == "3"
+            self.assertEqual(c.b, "3")
             a.a += 2
             return a
 
@@ -229,3 +229,33 @@ class TestApi(unittest.TestCase):
             },
         ]
         self.assertEqual(Error(**json), Error(error=errors))
+
+    def test_Simple(self) -> None:
+        """Test simple argument passing"""
+
+        class A(BaseModel):
+            val: float
+
+        def func(a: int, b: float, c: str, d: list[int]) -> A:
+            self.assertEqual(c, "err")
+            return A(val=a * b + sum(d))
+
+        data: MultiDict = ImmutableMultiDict(
+            [
+                ("a", "5"),
+                ("b", "2.2"),
+                ("c", "err"),
+                ("d", "3"),
+                ("d", "4"),
+            ],
+        )
+
+        api = DebugApi("Debug", data)
+        # because A is defined locally
+        api.builder.ns = locals()
+
+        ff = api(func)
+
+        result = ff()
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(A(**result.json), A(val=5 * 2.2 + (3 + 4)))

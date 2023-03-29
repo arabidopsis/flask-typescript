@@ -29,7 +29,7 @@ class ZOD:
         default: str | None = None,
     ) -> TSField:
         return TSField(
-            str_type=self.to_ts(),
+            arg=self,
             name=name,
             default=default,
         )
@@ -103,17 +103,18 @@ ZZZ = BigZed()
 
 
 @dataclass
-class TSField(StrZOD):
+class TSField(ZOD):
+    arg: ZOD
     name: str
     default: str | None = None
 
     def to_ts(self) -> str:
         default = "" if self.default is None else f" /* ={self.default} */"
         q = "?" if self.default is not None else ""
-        return f"{self.name}{q}: {self.str_type}{default}"
+        return f"{self.name}{q}: {self.arg.to_ts()}{default}"
 
     def anonymous(self) -> ZOD:
-        return StrZOD(str_type=self.str_type)
+        return self.arg
 
 
 assert ZZZ.null() == ZZZ.null()

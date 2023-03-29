@@ -212,11 +212,11 @@ class TSFunction:
         export = "export " if self.export else ""
         return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
 
-    def __str__(self) -> str:
-        return self.to_ts()
-
     def anonymous(self) -> ZOD:
         return ZZZ.function(self.args, self.async_returntype)
+
+    def __str__(self) -> str:
+        return self.to_ts()
 
     @property
     def async_returntype(self) -> ZOD:
@@ -340,7 +340,7 @@ class TSBuilder:
                     # we are not now a ts list (e.g. val[])
                     return ZZZ.tuple(iargs)
                 else:
-                    # Union,List
+                    # Union
                     args = ZZZ.union(iargs)
         else:
             if is_type:
@@ -452,5 +452,5 @@ class TSBuilder:
             return f"{{{args}}}"
         if isinstance(value, bool):
             return repr(value).lower()
-
+        # whatever...
         return repr(value)

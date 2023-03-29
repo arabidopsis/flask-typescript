@@ -3,7 +3,7 @@ export type ValidationError = {
     loc: string[]
     msg: string
     type: string
-}
+}[]
 export type Result<T> = { success: true, result: T } | { success: false, error: ValidationError }
 
 export function asjson(obj: any): RequestInit {
@@ -65,7 +65,7 @@ export async function serializeFormData(formData: FormData): Promise<Record<stri
 };
 
 
-export function findErrors(form: HTMLFormElement, errors: ValidationError[]): [HTMLElement, string][] {
+export function findErrors(form: HTMLFormElement, errors: ValidationError): [HTMLElement, string][] {
     const ret: [HTMLElement, string][] = []
     for (const error of errors) {
         const name: string = error.loc.join('.') as string
