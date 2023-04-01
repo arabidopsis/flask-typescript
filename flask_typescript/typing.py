@@ -323,7 +323,8 @@ class TSBuilder:
         return iargs
 
     def typevar_to_zod(self, typ: TypeVar) -> ZOD:
-        iargs = self.arglist_to_zod(typ.__constraints__)
+        args = (typ.__bound__,) if typ.__bound__ else typ.__constraints__
+        iargs = self.arglist_to_zod(args)
         return ZZZ.typevar(typ.__name__, iargs)
 
     def type_to_zod(self, typ: type[Any], is_arg: bool = False) -> ZOD:

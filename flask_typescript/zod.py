@@ -60,12 +60,11 @@ class GenericZOD(StrZOD):
         return self.str_type
 
     def to_generic_args(self) -> str:
-        if self.constraints:
-            c = ZZZ.union(self.constraints)
-            s = f"= {c.to_ts()}"
-        else:
-            s = ""
-        return f"{self.str_type}{s}"
+        if not self.constraints:
+            return self.str_type
+
+        constraints = ZZZ.union(self.constraints)
+        return f"{self.str_type}= {constraints.to_ts()}"
 
 
 class BigZed:
@@ -105,7 +104,11 @@ class BigZed:
         if null in iargs and iargs[-1] != null:
             iargs.remove(null)
             iargs = iargs + [null]
-        sargs = " | ".join(i.to_ts() for i in iargs)
+        # str|bytes => string|string => string
+        # there is not ordered set...so we use an ordered dict
+        _args = {i.to_ts(): i for i in iargs}.keys()
+
+        sargs = " | ".join(_args)
         return StrZOD(str_type=sargs)
 
     def map(self, k: ZOD, v: ZOD) -> ZOD:
