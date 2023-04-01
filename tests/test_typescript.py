@@ -51,9 +51,24 @@ class GenericPY(GenericModel, Generic[T]):
     values: list[T]
 
 
+class GenericList(GenericModel, Generic[T]):
+    value: list[T]
+
+
 class SelfReference(BaseModel):
     a: int = 123
     b: SelfReference | None = None
+
+
+class GenericTuple(GenericModel, Generic[T]):
+    value: tuple[T, int]
+
+
+GenericFunc_expected = "export type GenericFunc<T= number | string> = (a: T, b: T) => T"
+
+
+def GenericFunc(a: T, b: T) -> T:
+    return a + b
 
 
 KEY = "//>"
@@ -114,6 +129,12 @@ class TestModels(unittest.TestCase):
             with self.subTest(model=name):
                 s, expected = str(self.builder(m)), self.Res[name]
                 self.assertEqual(s, expected)
+
+    def test_GenericFunc(self):
+        """Test generic function"""
+        val = str(self.builder(GenericFunc))
+
+        self.assertEqual(val, GenericFunc_expected)
 
 
 if __name__ == "__main__":

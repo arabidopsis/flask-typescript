@@ -198,10 +198,7 @@ class TSInterface:
         return f"{export}{self.interface} {self.name}{self._generic_args()} {eq}{{{nl}{ts_fields()}{nl}}}"
 
     def _generic_args(self) -> str:
-        if not self.is_generic:
-            return ""
-        val = ", ".join(t.to_generic_args() for t in self.get_generics())
-        return f"<{val}>"
+        return ZZZ.to_generic_args(self.fields)
 
     def anonymous(self) -> ZOD:
         return ZZZ.object(self.fields)
@@ -230,7 +227,10 @@ class TSFunction:
 
         sargs = ts_args()
         export = "export " if self.export else ""
-        return f"{export}type {self.name} = ({sargs}) => {self.async_returntype}"
+        generics = self._generic_args()
+        return (
+            f"{export}type {self.name}{generics} = ({sargs}) => {self.async_returntype}"
+        )
 
     def anonymous(self) -> ZOD:
         return ZZZ.function(self.args, self.async_returntype)
@@ -246,6 +246,9 @@ class TSFunction:
         if self.isasync:
             return rt.as_async()
         return rt
+
+    def _generic_args(self) -> str:
+        return ZZZ.to_generic_args(self.args + [self.returntype])
 
 
 def toz(s):
@@ -371,8 +374,11 @@ class TSBuilder:
                     # we are not now a ts list (e.g. val[])
                     return ZZZ.tuple(iargs)
                 else:
-                    # Union
-                    args = ZZZ.union(iargs)
+                    if len(iargs) == 1:
+                        args = iargs[0]
+                    else:
+                        # assume Union
+                        args = ZZZ.union(iargs)
         else:
             if is_type:
                 if cls not in self.TS:
@@ -397,12 +403,15 @@ class TSBuilder:
             args = args.array()
         return args
 
+    def get_annotations(self, cls: TSTypeable) -> dict[str, Annotation]:
+        return get_annotations(cls, self.ns)
+
     def get_field_types(
         self,
         cls: TSTypeable,
         is_arg: bool = False,
     ) -> Iterator[TSField]:
-        a = get_annotations(cls, self.ns)
+        a = self.get_annotations(cls)
 
         for name, annotation in a.items():
             ts_type_as_zod = self.type_to_zod(annotation.type, is_arg=is_arg)
