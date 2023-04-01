@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from abc import abstractproperty
 from dataclasses import dataclass
 
 
@@ -12,10 +13,17 @@ class ZOD:
     def to_ts(self) -> str:
         raise NotImplementedError("need to implement typscript generation")
 
+    def to_generic_args(self) -> str:
+        return self.to_ts()
+
+    @abstractproperty
+    def is_generic(self) -> bool:
+        raise NotImplementedError("need to implement typscript generation")
+
     def array(self) -> ZOD:
         ts = self.to_ts()
         args = f"({ts})[]" if "|" in ts else f"{ts}[]"
-        return StrZOD(str_type=args)
+        return StrZOD(str_type=args, is_generic=self.is_generic)
 
     def as_async(self) -> ZOD:
         return StrZOD(str_type=f"Promise<{self.to_ts()}>")
@@ -38,9 +46,26 @@ class ZOD:
 @dataclass
 class StrZOD(ZOD):
     str_type: str
+    is_generic: bool = False
 
     def to_ts(self) -> str:
         return self.str_type
+
+
+@dataclass
+class GenericZOD(StrZOD):
+    constraints: list[ZOD] | None = None
+
+    def to_ts(self) -> str:
+        return self.str_type
+
+    def to_generic_args(self) -> str:
+        if self.constraints:
+            c = ZZZ.union(self.constraints)
+            s = f"= {c.to_ts()}"
+        else:
+            s = ""
+        return f"{self.str_type}{s}"
 
 
 class BigZed:
@@ -68,8 +93,8 @@ class BigZed:
     def unknown(self) -> ZOD:
         return StrZOD(str_type="unknown")
 
-    def ref(self, name: str) -> ZOD:
-        return StrZOD(str_type=name)
+    def ref(self, name: str, is_generic: bool = False) -> ZOD:
+        return StrZOD(str_type=name, is_generic=is_generic)
 
     def tuple(self, args: list[ZOD]) -> ZOD:
         sargs = "[" + ",".join(i.to_ts() for i in args) + "]"
@@ -98,6 +123,9 @@ class BigZed:
         sargs = ", ".join(f.to_ts() for f in args)
         return StrZOD(str_type=f"({sargs})=> {returntype.to_ts()}")
 
+    def typevar(self, name: str, args: list[ZOD]) -> ZOD:
+        return GenericZOD(str_type=name, constraints=args, is_generic=True)
+
 
 ZZZ = BigZed()
 
@@ -108,10 +136,15 @@ class TSField(ZOD):
     name: str
     default: str | None = None
 
+    @property
+    def is_generic(self) -> bool:
+        return self.arg.is_generic
+
     def to_ts(self) -> str:
+        args = self.arg.to_ts()
         default = "" if self.default is None else f" /* ={self.default} */"
         q = "?" if self.default is not None else ""
-        return f"{self.name}{q}: {self.arg.to_ts()}{default}"
+        return f"{self.name}{q}: {args}{default}"
 
     def anonymous(self) -> ZOD:
         return self.arg

@@ -57,6 +57,17 @@ app = Flask(__name__)
 api = Api("Base", result=False)
 
 
+def testwrap(func):
+    from functools import wraps
+
+    @wraps(func)
+    def myfunc(*args, **kwargs):
+        print("checking...")
+        return func(*args, **kwargs)
+
+    return myfunc
+
+
 @app.get("/")
 def index():
     return render_template("index.html")
@@ -78,6 +89,7 @@ def onexc(e) -> Response:
 
 @app.post("/full")
 @api
+@testwrap
 def full(arg: Arg, extra: int = 1) -> Arg:
     # print(request.headers)
     # print(arg, extra)

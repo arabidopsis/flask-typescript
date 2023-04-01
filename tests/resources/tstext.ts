@@ -23,3 +23,17 @@ export type Arg = {
     arg5: Z
     checked?: string[] /* =['aaa'] */
 }
+//>WithAnnotated
+export type WithAnnotated = {
+    query: number
+}
+//>GenericPY
+export type GenericPY<T= number | string> = {
+    value: T
+    values: T[]
+}
+//>SelfReference
+export type SelfReference = {
+    a?: number /* =123 */
+    b?: SelfReference | null /* =null */
+}

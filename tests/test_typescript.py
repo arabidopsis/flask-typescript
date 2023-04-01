@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import unittest
 from datetime import date  # noqa: F401
+from typing import Annotated
+from typing import Generic
+from typing import TypeVar
 
 from pydantic import BaseModel
 from pydantic import Field
+from pydantic.generics import GenericModel
 
 from flask_typescript.typing import TSBuilder
 from flask_typescript.utils import lenient_issubclass
@@ -33,6 +37,23 @@ class Arg(BaseModel):
     val: float = Field(gt=0)  # Annotated[float,pos]
     arg5: Z  #
     checked: list[str] = ["aaa"]
+
+
+class WithAnnotated(BaseModel):
+    query: Annotated[float, lambda x: x > 0]
+
+
+T = TypeVar("T", int, str)
+
+
+class GenericPY(GenericModel, Generic[T]):
+    value: T
+    values: list[T]
+
+
+class SelfReference(BaseModel):
+    a: int = 123
+    b: SelfReference | None = None
 
 
 KEY = "//>"
@@ -65,7 +86,9 @@ def get_models():
     return {
         name: v
         for name, v in globals().items()
-        if lenient_issubclass(v, BaseModel) and v is not BaseModel
+        if lenient_issubclass(v, BaseModel)
+        and v is not BaseModel
+        and v is not GenericModel
     }
 
 

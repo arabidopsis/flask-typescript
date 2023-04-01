@@ -231,7 +231,7 @@ def convert_from_schema(  # noqa: C901
             if "$ref" in p:
                 locators = [locate_schema(p["$ref"])]
             elif "anyOf" in p:
-                # this is X | Y
+                # this is X | Y or a Generic
                 locators = [locate_schema(t["$ref"]) for t in p["anyOf"]]
             elif "oneOf" in p:
                 # this is what?

@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import decimal
 from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import Field
 from dataclasses import fields
@@ -21,10 +22,13 @@ from typing import get_type_hints
 from typing import Iterator
 from typing import Literal
 from typing import Type
+from typing import TypeGuard
+from typing import TypeVar
 from typing import Union
 
 from pydantic import BaseModel
 from pydantic.fields import ModelField
+from pydantic.generics import GenericModel
 from werkzeug.datastructures import FileStorage
 
 from .zod import TSField
@@ -44,11 +48,11 @@ def is_dataclass_type(obj: Any) -> bool:
     return isinstance(obj, type) and is_dataclass(obj)
 
 
-def is_pydantic_type(typ: type[Any]) -> bool:
+def is_pydantic_type(typ: Any) -> TypeGuard[type[BaseModel]]:
     return isinstance(typ, type) and issubclass(typ, BaseModel)
 
 
-def is_file_storage(typ: type[Any]) -> bool:
+def is_file_storage(typ: Any) -> bool:
     return isinstance(typ, type) and issubclass(typ, FileStorage)
 
 
@@ -155,8 +159,10 @@ def get_annotations(
         d = d_
     elif is_typeddict(cls_or_func):
         defaults = {}
-    elif is_pydantic_type(cls_or_func):  # type: ignore
-        defaults = get_py_defaults(cast(Type[Any], cls_or_func))
+    elif is_pydantic_type(cls_or_func):
+        defaults = get_py_defaults(cls_or_func)
+        if "__concrete__" in d and issubclass(cls_or_func, GenericModel):
+            del d["__concrete__"]
     else:
         defaults = get_dc_defaults(cast(Type[Any], cls_or_func))
 
@@ -173,6 +179,14 @@ class TSInterface:
     nl: str = NL
     interface: Literal["interface", "type"] = "interface"
 
+    @property
+    def is_generic(self):
+        return any(f.is_generic for f in self.fields)
+
+    def get_generics(self) -> list[ZOD]:
+        ret = [f.arg for f in self.fields if f.is_generic]
+        return ret
+
     def to_ts(self) -> str:
         def ts_fields() -> str:
             nl = self.nl
@@ -181,7 +195,13 @@ class TSInterface:
         export = "export " if self.export else ""
         nl = self.nl
         eq = "= " if self.interface == "type" else ""
-        return f"{export}{self.interface} {self.name} {eq}{{{nl}{ts_fields()}{nl}}}"
+        return f"{export}{self.interface} {self.name}{self._generic_args()} {eq}{{{nl}{ts_fields()}{nl}}}"
+
+    def _generic_args(self) -> str:
+        if not self.is_generic:
+            return ""
+        val = ", ".join(t.to_generic_args() for t in self.get_generics())
+        return f"<{val}>"
 
     def anonymous(self) -> ZOD:
         return ZZZ.object(self.fields)
@@ -294,6 +314,18 @@ class TSBuilder:
             return ZZZ.ref(type_name)
         raise TypeError(f'unknown ForwardRef "{type_name}"')
 
+    def arglist_to_zod(self, types: Sequence[type[Any]]) -> list[ZOD]:
+        iargs = [
+            self.type_to_zod(s, is_arg=True)
+            for s in types
+            if s is not Ellipsis  # e.g. t.Tuple[int,...]
+        ]
+        return iargs
+
+    def typevar_to_zod(self, typ: TypeVar) -> ZOD:
+        iargs = self.arglist_to_zod(typ.__constraints__)
+        return ZZZ.typevar(typ.__name__, iargs)
+
     def type_to_zod(self, typ: type[Any], is_arg: bool = False) -> ZOD:
         if is_dataclass_type(typ) or is_pydantic_type(typ):
             if (
@@ -314,6 +346,8 @@ class TSBuilder:
 
         if isinstance(typ, ForwardRef):
             return self.forward_ref(typ.__forward_arg__)
+        if isinstance(typ, TypeVar):
+            return self.typevar_to_zod(typ)
 
         if hasattr(typ, "__origin__"):
             # e.g. cls is the <class 'list'> while typ is list[arg]
@@ -323,11 +357,7 @@ class TSBuilder:
 
         is_type = isinstance(cls, type)
         if hasattr(typ, "__args__"):
-            iargs = [
-                self.type_to_zod(s, is_arg=True)
-                for s in typ.__args__
-                if s is not Ellipsis  # e.g. t.Tuple[int,...]
-            ]
+            iargs = self.arglist_to_zod(typ.__args__)
 
             if is_type and issubclass(cls, Mapping):
                 # e.g. dict[str, int]
