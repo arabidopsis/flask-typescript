@@ -36,10 +36,10 @@ export type GenericPY<T= number | string> = {
 export type GenericList<T= number | string> = {
     value: T[]
 }
-//>SelfReference
-export type SelfReference = {
+//>LinkedList
+export type LinkedList = {
     a?: number /* =123 */
-    b?: SelfReference | null /* =null */
+    b?: LinkedList | null /* =null */
 }
 //>GenericTuple
 export type GenericTuple<T= number | string> = {

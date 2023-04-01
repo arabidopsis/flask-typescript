@@ -55,9 +55,9 @@ class GenericList(GenericModel, Generic[T]):
     value: list[T]
 
 
-class SelfReference(BaseModel):
+class LinkedList(BaseModel):
     a: int = 123
-    b: SelfReference | None = None
+    b: LinkedList | None = None
 
 
 class GenericTuple(GenericModel, Generic[T]):

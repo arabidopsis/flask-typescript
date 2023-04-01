@@ -326,7 +326,7 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
             ret.append(row)
         return ret
 
-    out = []
+    out = set()
     definitions = schema.get("definitions")
 
     if definitions:
@@ -334,16 +334,24 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
             if k in seen:
                 continue
             s = to_ts_schema(d, seen)
-            out.append(s)
+            out.add(s)
             seen.add(k)
+    # might not have properties if we have a self-ref type:
+    #
+    # class LinkedList(BaseModel):
+    #   val: int = 123
+    #   next: LinkedList|None = None
+    #
+    # only {'$ref': '#/definitions/LinkedList', 'definitions': {...}}
+    if "properties" in schema:
+        ret = props(schema["properties"])
 
-    ret = props(schema["properties"])
-    attrs = INDENT + (NL + INDENT).join(ret)
+        attrs = INDENT + (NL + INDENT).join(ret)
 
-    s = f"""export type {schema['title']} = {{
+        s = f"""export type {schema['title']} = {{
 {attrs}
 }}"""
-    out.append(s)
+        out.add(s)
     return "\n".join(out)
 
 

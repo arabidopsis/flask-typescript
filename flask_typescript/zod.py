@@ -89,6 +89,25 @@ class GenericZOD(ZOD):
         )
 
 
+@dataclass
+class TSField(ZOD):
+    arg: ZOD
+    name: str
+    default: str | None = None
+
+    def get_generic_args(self) -> list[ZOD]:
+        return self.arg.get_generic_args()
+
+    def to_ts(self) -> str:
+        args = self.arg.to_ts()
+        default = "" if self.default is None else f" /* ={self.default} */"
+        q = "?" if self.default is not None else ""
+        return f"{self.name}{q}: {args}{default}"
+
+    def anonymous(self) -> ZOD:
+        return self.arg
+
+
 class BigZed:
     def any(self) -> ZOD:
         return StrZOD(str_type="any")
@@ -162,7 +181,6 @@ class BigZed:
     def function(self, args: Sequence[TSField], returntype: ZOD) -> ZOD:
         _args = list(args)
         sargs = ", ".join(f.to_ts() for f in _args)
-        # FIXME generic (a)
         generic = self._generic(_args + [returntype])
         if generic:
             val = ", ".join(g.to_generic_args() for g in generic)
@@ -180,25 +198,6 @@ class BigZed:
 
 
 ZZZ = BigZed()
-
-
-@dataclass
-class TSField(ZOD):
-    arg: ZOD
-    name: str
-    default: str | None = None
-
-    def get_generic_args(self) -> list[ZOD]:
-        return self.arg.get_generic_args()
-
-    def to_ts(self) -> str:
-        args = self.arg.to_ts()
-        default = "" if self.default is None else f" /* ={self.default} */"
-        q = "?" if self.default is not None else ""
-        return f"{self.name}{q}: {args}{default}"
-
-    def anonymous(self) -> ZOD:
-        return self.arg
 
 
 assert ZZZ.null() == ZZZ.null()
