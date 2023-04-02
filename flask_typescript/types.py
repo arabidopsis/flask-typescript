@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import _MISSING_TYPE
+from typing import Any
 from typing import Generic
 from typing import Literal
+from typing import TypeAlias
 from typing import TypedDict
 from typing import TypeVar
 
@@ -32,3 +35,11 @@ class Error(BaseModel):
 
 
 Result = Success | Error
+
+
+MaybeDict: TypeAlias = dict[str, Any] | None
+MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
+MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
+ModelType = TypeVar("ModelType", bound=BaseModel)
+
+JsonDict: TypeAlias = dict[str, Any]

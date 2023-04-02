@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 import re
 from contextlib import contextmanager
 from typing import Any
 from typing import Iterator
-from typing import TypeAlias
 
+from pydantic.json import pydantic_encoder
 from werkzeug.datastructures import MultiDict
 
-JsonDict: TypeAlias = dict[str, Any]
+from .types import ErrorDict
+from .types import JsonDict
 
 ARG = re.compile(r"\[([^]]*)\]")
 
@@ -156,3 +158,49 @@ def maybe_close(filename: str | None = None, mode="w"):
     finally:
         if filename is not None:
             fp.close()
+
+
+def getdict(values: JsonDict, path: list[str] | None = None) -> JsonDict:
+    if path is None:
+        return values
+    for attr in path:
+        if attr in values:
+            values = values[attr]
+            if not isinstance(values, dict):
+                raise ValueError(f"{'.'.join(path)}: bad path")
+        else:
+            return {}
+    return values
+
+
+CamelCase = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def tojson(v: Any, indent: None | int | str = 2) -> str:
+    return json.dumps(v, indent=indent, default=pydantic_encoder)
+
+
+class FlaskValueError(ValueError):
+    """Create an Error similar to pydantic's ValidationError"""
+
+    def __init__(self, exc: ValueError, loc: str, errtype: str = "malformed"):
+        super().__init__()
+        self.exc = exc
+        self.loc = loc
+        self.errtype = errtype
+
+    @property
+    def exc_name(self) -> str:
+        return CamelCase.sub("_", self.exc.__class__.__name__).lower()
+
+    def json(self, *, indent: None | int | str = 2) -> str:
+        return tojson(self.errors(), indent=indent)
+
+    def errors(self) -> list[ErrorDict]:
+        return [
+            dict(
+                loc=(self.loc,),
+                msg=str(self.exc),
+                type=f"{self.exc_name}.{self.errtype}",
+            ),
+        ]

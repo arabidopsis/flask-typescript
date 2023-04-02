@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import re
 import sys
 from dataclasses import _MISSING_TYPE
 from dataclasses import dataclass
@@ -25,7 +23,6 @@ from flask import request
 from flask import Response
 from pydantic import BaseModel
 from pydantic.error_wrappers import ValidationError
-from pydantic.json import pydantic_encoder
 from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
@@ -33,18 +30,19 @@ from werkzeug.datastructures import MultiDict
 from .types import Error
 from .types import ErrorDict
 from .types import Success
-from .typing import INDENT
 from .typing import Literal
-from .typing import NL
 from .typing import TSBuilder
 from .typing import TSField
 from .typing import TSInterface
 from .utils import dedottify
+from .utils import FlaskValueError
+from .utils import getdict
 from .utils import jquery_form
 from .utils import JsonDict
 from .utils import lenient_issubclass
 from .utils import maybe_close
 from .utils import multidict_json
+from .utils import tojson
 from .utils import unflatten
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
@@ -53,6 +51,7 @@ DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 MaybeDict: TypeAlias = dict[str, Any] | None
 MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
+ModelType = TypeVar("ModelType", bound=BaseModel)
 
 Decoding: TypeAlias = Literal[None, "devalue", "jquery"]
 ExcFunc: TypeAlias = Callable[[list[ErrorDict], bool], Response]
@@ -62,10 +61,6 @@ ExcFunc: TypeAlias = Callable[[list[ErrorDict], bool], Response]
 # )
 
 
-def tojson(v: Any, indent: None | int | str = 2) -> str:
-    return json.dumps(v, indent=indent, default=pydantic_encoder)
-
-
 @dataclass
 class Config:
     decoding: Decoding = None
@@ -73,344 +68,44 @@ class Config:
     result: bool | None = None
 
 
-CamelCase = re.compile(r"(?<!^)(?=[A-Z])")
+def patch(e: ValidationError, json: JsonDict) -> JsonDict:
+    def list_patch(locs):
+        tgt = json
+        for loc in locs[:-1]:
+            tgt = tgt[loc]
+        # turn into a list
+        tgt[locs[-1]] = [tgt[locs[-1]]]
+
+    errs = e.errors()
+    if all(err["type"] == "type_error.list" for err in errs):
+        for err in errs:
+            loc = err["loc"]
+            list_patch(loc)
+    else:
+        raise e
+    return json
 
 
-class FlaskValueError(ValueError):
-    """Create an Error similar to pydantic's ValidationError"""
-
-    def __init__(self, exc: ValueError, loc: str, errtype: str = "malformed"):
-        super().__init__()
-        self.exc = exc
-        self.loc = loc
-        self.errtype = errtype
-
-    @property
-    def exc_name(self) -> str:
-        return CamelCase.sub("_", self.exc.__class__.__name__).lower()
-
-    def json(self, *, indent: None | int | str = 2) -> str:
-        return tojson(self.errors(), indent=indent)
-
-    def errors(self) -> list[ErrorDict]:
-        return [
-            dict(
-                loc=(self.loc,),
-                msg=str(self.exc),
-                type=f"{self.exc_name}.{self.errtype}",
-            ),
-        ]
-
-
-def getdict(values: JsonDict, prefix: list[str] | None = None) -> JsonDict:
-    if prefix is None:
-        return values
-    for attr in prefix:
-        if attr in values:
-            values = values[attr]
-            if not isinstance(values, dict):
-                raise ValueError(f"{'.'.join(prefix)}: bad path")
-        else:
-            return {}
-    return values
-
-
-def pyconverter(
-    model: type[BaseModel],
-    prefix: list[str] | None = None,
+def converter(
+    model: type[ModelType],
+    path: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[JsonDict], MaybeModel]:
+) -> Callable[[JsonDict], ModelType | _MISSING_TYPE]:
     # we would really, *really* like to use this
     # - simpler - converter ... but mulitple <select>s
     # with only one option selected doesn't return a list
     # so this may fail with a pydantic type_error.list
 
-    def convert(values: JsonDict) -> MaybeModel:
-        values = getdict(values, prefix)
+    def convert(values: JsonDict) -> ModelType | _MISSING_TYPE:
+        values = getdict(values, path)
         if not values and hasdefault:
             return MISSING
-
-        return model(**values)
-
-    return convert
-
-
-ModelType = TypeVar("ModelType", bound=BaseModel)
-
-
-def converter(
-    model: type[ModelType],
-    *,
-    prefix: list[str] | None = None,
-    hasdefault: bool = False,
-) -> Callable[[JsonDict], ModelType | _MISSING_TYPE]:
-    """Complex converter necessitated by select problems (see note above)"""
-    ret = convert_from_schema(model.schema(), hasdefault=hasdefault)
-
-    cvt = Converter(model.__name__, ret, hasdefault=hasdefault)
-
-    def convert(values: JsonDict) -> ModelType | _MISSING_TYPE:
-        values = getdict(values, prefix)
-        args = cvt.convert(values)
-        if args is None:
-            return MISSING
-        return model(**args)
+        try:
+            return model(**values)
+        except ValidationError as e:
+            return model(**patch(e, values))
 
     return convert
-
-
-def convert_from_schema(
-    schema: dict[str, Any],
-    hasdefault: bool = False,
-):
-    return convert_from_schema_(
-        schema,
-        global_schema=schema,
-        hasdefault=hasdefault,
-        seen=dict(),
-    )
-
-
-def convert_from_schema_(  # noqa: C901
-    schema: dict[str, Any],
-    global_schema: dict[str, Any],
-    hasdefault: bool,
-    seen: dict[str, Converter],
-) -> dict[str, Callable[[JsonDict], Any]]:
-    def mkgetlist(name: str, typ: str, hasdefault: bool):
-        def getlist(values: JsonDict):
-            if name not in values:
-                if hasdefault:
-                    return MISSING
-                return []
-            v = values[name]
-            # **** all this to just check this!!!! ****
-            if not isinstance(v, list):
-                v = [v]
-            return v
-
-        return getlist
-
-    def mkgetval(name: str, typ: str, hasdefault: bool):
-        def getval(values: JsonDict):
-            return values.get(name, MISSING)
-
-        return getval
-
-    def aschema(
-        loc: Locator,
-        hasdefault: bool,
-    ) -> Converter:
-        assert seen is not None
-        # if we are already being built then return Converter instance
-        if loc.key in seen:
-            return seen[loc.key]
-        seen[loc.key] = cvt = Converter(loc.typname, attrs={}, hasdefault=hasdefault)
-        schema2 = loc.getdef(global_schema)
-        ret = convert_from_schema_(
-            schema2,
-            global_schema=global_schema,
-            hasdefault=hasdefault,
-            seen=seen,
-        )
-
-        cvt.attrs = ret  # patch attributes
-        return cvt
-
-    def subschemas(
-        attrname: str,
-        lst: list[Locator],
-        hasdefault: bool,
-    ) -> Callable[[JsonDict], MissingDict]:
-        cvts = [aschema(locator, hasdefault) for locator in lst]
-
-        def convert_anyOf(values: JsonDict) -> MissingDict:
-            values = getdict(values, [attrname])
-            if not values:
-                return MISSING
-            for cvt in cvts:
-                a = cvt.convert(values)
-                if a is not None:
-                    return a
-            return MISSING
-
-        return convert_anyOf
-
-    if "properties" not in schema:
-        # recursive definition?
-        locator = locate_schema(schema["$ref"])
-        cvt = aschema(locator, hasdefault=hasdefault)
-        return cvt.attrs
-
-    required = set(schema.get("required", []))
-    ret: dict[str, Callable[[JsonDict], Any]] = {}
-
-    for name, p in schema["properties"].items():
-        hasdefault2 = name not in required
-        if "type" not in p:
-            if "$ref" in p:
-                locators = [locate_schema(p["$ref"])]
-            elif "anyOf" in p:
-                # this is X | Y or a Generic
-                locators = [locate_schema(t["$ref"]) for t in p["anyOf"]]
-            elif "oneOf" in p:
-                # this is what?
-                locators = [locate_schema(t["$ref"]) for t in p["oneOf"]]
-            # elif 'allOf' in p:
-            # non existent intersection type!
-            # this is what should be a singleton
-            # typ = [locate_schema(t['$ref']) for t in p['allOf']]
-            else:
-                raise TypeError(f"can't find type for {name}: {p}")
-            ret[name] = subschemas(name, locators, hasdefault2)
-
-        else:
-            typ = p["type"]
-            if typ == "array":
-                ret[name] = mkgetlist(name, p["items"]["type"], hasdefault2)
-            else:
-                ret[name] = mkgetval(name, typ, hasdefault2)
-
-    return ret
-
-
-class Converter:
-    def __init__(
-        self,
-        typename: str,
-        attrs: dict[str, Callable[[JsonDict], Any]] = {},
-        hasdefault: bool = False,
-        prefix: list[str] | None = None,
-    ):
-        self.typename = typename
-        self.attrs = attrs
-        self.hasdefault = hasdefault
-        self.prefix = prefix
-
-    def convert(self, values: JsonDict) -> MaybeDict:
-        values = getdict(values, self.prefix)
-        args = {}
-        for name, cvt in self.attrs.items():
-            v = cvt(values)
-            if v is MISSING:
-                continue
-            args[name] = v
-        if not args and self.hasdefault:
-            return None
-        return args
-
-    def __call__(self, values: JsonDict) -> MaybeDict:
-        return self.convert(values)
-
-
-@dataclass
-class Locator:
-    key: str
-    path: list[str]
-
-    @property
-    def typname(self):
-        return self.path[-1]
-
-    def getdef(self, schema: dict[str, Any]) -> dict[str, Any]:
-        for p in self.path:
-            if p == "#":
-                continue
-            if p not in schema:
-                raise TypeError(f"bad path {self.path}")
-            schema = schema[p]
-            if not isinstance(schema, dict):
-                raise TypeError(f"bad path {self.path}")
-        return schema
-
-
-def locate_schema(s: str) -> Locator:
-    "e.g.: #/definitions/Type"
-    return Locator(key=s, path=s.split("/"))
-
-
-def jsonrepr(v):
-    return json.dumps(v)
-
-
-def to_ts(model: type[BaseModel], seen: set[str] | None = None) -> str:
-    if seen is None:
-        seen = set()
-    if model.__name__ in seen:
-        return ""
-    schema = model.schema()
-    try:
-        return to_ts_schema(schema, seen)
-    finally:
-        seen.add(model.__name__)
-
-
-def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
-    def props(definitions):
-        ret = []
-
-        def gettype(p):
-            if "type" not in p:
-                if "$ref" in p:
-                    _, typ = locate_schema(p["$ref"])
-                elif "allOf" in p:
-                    typ = "[" + " , ".join(gettype(t["$ref"]) for t in p["allOf"]) + "]"
-                elif "anyOf" in p:
-                    typ = " | ".join(gettype(t["$ref"]) for t in p["anyOf"])
-                else:
-                    # oneOf
-                    raise ValueError("can't find type!")
-            else:
-                typ = p["type"]
-            if typ == "array":
-                islist = "[]"
-                typ = gettype(p["items"])
-            else:
-                islist = ""
-            if typ in {"integer", "float"}:
-                typ = "number"
-            return f"{typ}{islist}"
-
-        for name, p in definitions.items():
-            typ = gettype(p)
-            if "default" in p:
-                q = "?"
-                v = jsonrepr(p["default"])
-                default = f" /* ={v} */"
-            else:
-                q = ""
-                default = ""
-            row = f"{name}{q}: {typ}{default};"
-            ret.append(row)
-        return ret
-
-    out = set()
-    definitions = schema.get("definitions")
-
-    if definitions:
-        for k, d in definitions.items():
-            if k in seen:
-                continue
-            s = to_ts_schema(d, seen)
-            out.add(s)
-            seen.add(k)
-    # might not have properties if we have a self-ref type:
-    #
-    # class LinkedList(BaseModel):
-    #   val: int = 123
-    #   next: LinkedList|None = None
-    #
-    # only {'$ref': '#/definitions/LinkedList', 'definitions': {...}}
-    if "properties" in schema:
-        ret = props(schema["properties"])
-
-        attrs = INDENT + (NL + INDENT).join(ret)
-
-        s = f"""export type {schema['title']} = {{
-{attrs}
-}}"""
-        out.add(s)
-    return "\n".join(out)
 
 
 def funcname(func: FunctionType) -> str:
@@ -472,7 +167,7 @@ class Api:
         # we just need a few access functions that
         # fetch into Flask ImmutableMultiDict object (e.g. request.values)
         # and to deal with simple non-pydantic types (e.g. list[int])
-        hints = get_type_hints(func, localns=self.builder.ns, include_extras=True)
+        hints = get_type_hints(func, localns=self.builder.ns, include_extras=False)
 
         defaults = {
             k: v.default
@@ -531,7 +226,7 @@ class Api:
             elif issubclass(typ, BaseModel):
                 convert = converter(
                     typ,
-                    prefix=[name] if embed else None,
+                    path=[name] if embed else None,
                     hasdefault=name in defaults,
                 )
                 self.dataclasses.add(typ)
