@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import _MISSING_TYPE
 from dataclasses import dataclass
 from dataclasses import MISSING
 from dataclasses import replace
@@ -29,6 +28,8 @@ from werkzeug.datastructures import MultiDict
 
 from .types import Error
 from .types import ErrorDict
+from .types import ModelType
+from .types import ModelTypeOrMissing
 from .types import Success
 from .typing import Literal
 from .typing import TSBuilder
@@ -48,17 +49,8 @@ from .utils import unflatten
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
 
-MaybeDict: TypeAlias = dict[str, Any] | None
-MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
-MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
-ModelType = TypeVar("ModelType", bound=BaseModel)
-
 Decoding: TypeAlias = Literal[None, "devalue", "jquery"]
 ExcFunc: TypeAlias = Callable[[list[ErrorDict], bool], Response]
-# ExcFunc = TypeVar(
-#     "ExcFunc",
-#     bound=Callable[[list[ErrorDict],bool], Response],
-# )
 
 
 @dataclass
@@ -69,20 +61,26 @@ class Config:
 
 
 def patch(e: ValidationError, json: JsonDict) -> JsonDict:
+    """try and patch list validation errors"""
+
     def list_patch(locs):
+        *path, attr = locs
         tgt = json
-        for loc in locs[:-1]:
+        for loc in path:
             tgt = tgt[loc]
         # turn into a list
-        tgt[locs[-1]] = [tgt[locs[-1]]]
+        val = tgt[attr]
+        if not isinstance(val, list):
+            tgt[attr] = [val]
 
     errs = e.errors()
-    if all(err["type"] == "type_error.list" for err in errs):
-        for err in errs:
-            loc = err["loc"]
-            list_patch(loc)
-    else:
+    if not all(err["type"] == "type_error.list" for err in errs):
         raise e
+
+    for err in errs:
+        loc = err["loc"]
+        list_patch(loc)
+
     return json
 
 
@@ -90,13 +88,13 @@ def converter(
     model: type[ModelType],
     path: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[JsonDict], ModelType | _MISSING_TYPE]:
+) -> Callable[[JsonDict], ModelTypeOrMissing]:
     # we would really, *really* like to use this
     # - simpler - converter ... but mulitple <select>s
     # with only one option selected doesn't return a list
     # so this may fail with a pydantic type_error.list
 
-    def convert(values: JsonDict) -> ModelType | _MISSING_TYPE:
+    def convert(values: JsonDict) -> ModelTypeOrMissing:
         values = getdict(values, path)
         if not values and hasdefault:
             return MISSING
@@ -510,4 +508,5 @@ class DebugApi(Api):
 
     @property
     def is_json(self):
+        # json are just pure dictionaries....
         return not isinstance(self.data, MultiDict)

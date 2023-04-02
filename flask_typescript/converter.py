@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import _MISSING_TYPE
 from dataclasses import dataclass
 from dataclasses import MISSING
 from typing import Any
@@ -10,8 +9,11 @@ from .types import JsonDict
 from .types import MaybeDict
 from .types import MissingDict
 from .types import ModelType
+from .types import ModelTypeOrMissing
 from .utils import FlaskValueError
 from .utils import getdict
+
+# UNUSED...
 
 
 def converter(
@@ -19,13 +21,13 @@ def converter(
     *,
     path: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[JsonDict], ModelType | _MISSING_TYPE]:
+) -> Callable[[JsonDict], ModelTypeOrMissing]:
     """Complex converter necessitated by select problems (see note above)"""
     ret = convert_from_schema(model.schema(), hasdefault=hasdefault)
 
     cvt = Converter(model.__name__, ret, hasdefault=hasdefault)
 
-    def convert(values: JsonDict) -> ModelType | _MISSING_TYPE:
+    def convert(values: JsonDict) -> ModelTypeOrMissing:
         values = getdict(values, path)
         args = cvt.convert(values)
         if args is None:

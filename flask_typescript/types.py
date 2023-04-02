@@ -42,4 +42,5 @@ MissingDict: TypeAlias = dict[str, Any] | _MISSING_TYPE
 MaybeModel: TypeAlias = BaseModel | _MISSING_TYPE
 ModelType = TypeVar("ModelType", bound=BaseModel)
 
+ModelTypeOrMissing: TypeAlias = ModelType | _MISSING_TYPE
 JsonDict: TypeAlias = dict[str, Any]
