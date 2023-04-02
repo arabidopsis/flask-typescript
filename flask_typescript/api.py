@@ -105,9 +105,9 @@ class FlaskValueError(ValueError):
 def getdict(values: JsonDict, prefix: list[str] | None = None) -> JsonDict:
     if prefix is None:
         return values
-    for p in prefix:
-        if p in values:
-            values = values[p]
+    for attr in prefix:
+        if attr in values:
+            values = values[attr]
             if not isinstance(values, dict):
                 raise ValueError(f"{'.'.join(prefix)}: bad path")
         else:
@@ -135,18 +135,23 @@ def pyconverter(
     return convert
 
 
+ModelType = TypeVar("ModelType", bound=BaseModel)
+
+
 def converter(
-    model: type[BaseModel],
+    model: type[ModelType],
     *,
     prefix: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[JsonDict], MaybeModel]:
+) -> Callable[[JsonDict], ModelType | _MISSING_TYPE]:
     """Complex converter necessitated by select problems (see note above)"""
-    cvt = convert_from_schema(model.schema(), prefix=[], hasdefault=hasdefault)
+    ret = convert_from_schema(model.schema(), hasdefault=hasdefault)
 
-    def convert(values: JsonDict) -> MaybeModel:
+    cvt = Converter(model.__name__, ret, hasdefault=hasdefault)
+
+    def convert(values: JsonDict) -> ModelType | _MISSING_TYPE:
         values = getdict(values, prefix)
-        args = cvt(values)
+        args = cvt.convert(values)
         if args is None:
             return MISSING
         return model(**args)
@@ -154,14 +159,26 @@ def converter(
     return convert
 
 
-def convert_from_schema(  # noqa: C901
+def convert_from_schema(
     schema: dict[str, Any],
-    prefix: list[str],
     hasdefault: bool = False,
-) -> Callable[[JsonDict], MaybeDict]:
+):
+    return convert_from_schema_(
+        schema,
+        global_schema=schema,
+        hasdefault=hasdefault,
+        seen=dict(),
+    )
+
+
+def convert_from_schema_(  # noqa: C901
+    schema: dict[str, Any],
+    global_schema: dict[str, Any],
+    hasdefault: bool,
+    seen: dict[str, Converter],
+) -> dict[str, Callable[[JsonDict], Any]]:
     def mkgetlist(name: str, typ: str, hasdefault: bool):
         def getlist(values: JsonDict):
-            values = getdict(values, prefix)
             if name not in values:
                 if hasdefault:
                     return MISSING
@@ -176,51 +193,54 @@ def convert_from_schema(  # noqa: C901
 
     def mkgetval(name: str, typ: str, hasdefault: bool):
         def getval(values: JsonDict):
-            values = getdict(values, prefix)
             return values.get(name, MISSING)
 
         return getval
 
     def aschema(
-        name: str,
-        loc: str,
-        n: str,
+        loc: Locator,
         hasdefault: bool,
-    ) -> Callable[[JsonDict], MissingDict]:
-        schema2 = schema[loc][n]
-        ret = convert_from_schema(
+    ) -> Converter:
+        assert seen is not None
+        # if we are already being built then return Converter instance
+        if loc.key in seen:
+            return seen[loc.key]
+        seen[loc.key] = cvt = Converter(loc.typname, attrs={}, hasdefault=hasdefault)
+        schema2 = loc.getdef(global_schema)
+        ret = convert_from_schema_(
             schema2,
-            prefix=prefix + [name],
+            global_schema=global_schema,
             hasdefault=hasdefault,
+            seen=seen,
         )
 
-        def missing(values: JsonDict) -> MissingDict:
-            r = ret(values)
-            if r is None:
-                return MISSING
-            return r
-
-        return missing
+        cvt.attrs = ret  # patch attributes
+        return cvt
 
     def subschemas(
-        name,
-        lst: list[tuple[str, str]],
+        attrname: str,
+        lst: list[Locator],
         hasdefault: bool,
     ) -> Callable[[JsonDict], MissingDict]:
-        cvts: list[Callable[[JsonDict], MissingDict]] = []
-        cvts = [aschema(name, loc, n, hasdefault) for loc, n in lst]
-
-        if len(cvts) == 1:
-            return cvts[0]
+        cvts = [aschema(locator, hasdefault) for locator in lst]
 
         def convert_anyOf(values: JsonDict) -> MissingDict:
+            values = getdict(values, [attrname])
+            if not values:
+                return MISSING
             for cvt in cvts:
-                a = cvt(values)
-                if a is not MISSING:
+                a = cvt.convert(values)
+                if a is not None:
                     return a
             return MISSING
 
         return convert_anyOf
+
+    if "properties" not in schema:
+        # recursive definition?
+        locator = locate_schema(schema["$ref"])
+        cvt = aschema(locator, hasdefault=hasdefault)
+        return cvt.attrs
 
     required = set(schema.get("required", []))
     ret: dict[str, Callable[[JsonDict], Any]] = {}
@@ -243,36 +263,74 @@ def convert_from_schema(  # noqa: C901
             else:
                 raise TypeError(f"can't find type for {name}: {p}")
             ret[name] = subschemas(name, locators, hasdefault2)
-            continue
 
-        typ = p["type"]
-        if typ == "array":
-            ret[name] = mkgetlist(name, p["items"]["type"], hasdefault2)
         else:
-            ret[name] = mkgetval(name, typ, hasdefault2)
+            typ = p["type"]
+            if typ == "array":
+                ret[name] = mkgetlist(name, p["items"]["type"], hasdefault2)
+            else:
+                ret[name] = mkgetval(name, typ, hasdefault2)
 
-    def convert(values: JsonDict) -> MaybeDict:
+    return ret
+
+
+class Converter:
+    def __init__(
+        self,
+        typename: str,
+        attrs: dict[str, Callable[[JsonDict], Any]] = {},
+        hasdefault: bool = False,
+        prefix: list[str] | None = None,
+    ):
+        self.typename = typename
+        self.attrs = attrs
+        self.hasdefault = hasdefault
+        self.prefix = prefix
+
+    def convert(self, values: JsonDict) -> MaybeDict:
+        values = getdict(values, self.prefix)
         args = {}
-        for name, cvt in ret.items():
+        for name, cvt in self.attrs.items():
             v = cvt(values)
             if v is MISSING:
                 continue
             args[name] = v
-        if not args and hasdefault:
+        if not args and self.hasdefault:
             return None
         return args
 
-    return convert
+    def __call__(self, values: JsonDict) -> MaybeDict:
+        return self.convert(values)
 
 
-def repr(v):
+@dataclass
+class Locator:
+    key: str
+    path: list[str]
+
+    @property
+    def typname(self):
+        return self.path[-1]
+
+    def getdef(self, schema: dict[str, Any]) -> dict[str, Any]:
+        for p in self.path:
+            if p == "#":
+                continue
+            if p not in schema:
+                raise TypeError(f"bad path {self.path}")
+            schema = schema[p]
+            if not isinstance(schema, dict):
+                raise TypeError(f"bad path {self.path}")
+        return schema
+
+
+def locate_schema(s: str) -> Locator:
+    "e.g.: #/definitions/Type"
+    return Locator(key=s, path=s.split("/"))
+
+
+def jsonrepr(v):
     return json.dumps(v)
-
-
-def locate_schema(s: str) -> tuple[str, str]:
-    "e.g.: #/definitions/name"
-    l, n = s.split("/")[-2:]
-    return (l, n)
 
 
 def to_ts(model: type[BaseModel], seen: set[str] | None = None) -> str:
@@ -317,7 +375,7 @@ def to_ts_schema(schema: dict[str, Any], seen: set[str]) -> str:
             typ = gettype(p)
             if "default" in p:
                 q = "?"
-                v = repr(p["default"])
+                v = jsonrepr(p["default"])
                 default = f" /* ={v} */"
             else:
                 q = ""
@@ -378,10 +436,9 @@ class Api:
         self.name = name
         self.dataclasses: set[type[BaseModel]] = set()
         self.funcs: list[TSField] = []
-        self._onexc = onexc
-        self.decoding = decoding
+
         self.min_py = 1
-        self.result = result
+        self.config = Config(onexc=onexc, decoding=decoding, result=result)
 
     def __call__(
         self,
@@ -440,8 +497,15 @@ class Api:
             ret = values.get(name, [])
             if not isinstance(ret, list):
                 ret = [ret]
+
             # catch ValueError?
-            return t(arg(v) for v in ret)
+            def nomissing(v):
+                val = arg(v)
+                if val is MISSING:
+                    raise FlaskValueError(ValueError("missing array value"), loc=name)
+                return val
+
+            return t(nomissing(v) for v in ret)
 
         def cvt(name: str, typ: type[Any]) -> Callable[[JsonDict], Any]:
             nonlocal has_file_storage
@@ -514,8 +578,9 @@ class Api:
         config: Config,
     ) -> DecoratedCallable:
         ts = self.builder(func)
-        result = config.result if config.result is not None else self.result
-        if result:
+        result = config.result if config.result is not None else self.config.result
+
+        if result is True:
             ts = replace(ts, result=result)
         ts = replace(ts, isasync=True)
         self.funcs.append(ts.anonymous().field(ts.name))
@@ -523,11 +588,11 @@ class Api:
         asjson, embed, cargs = self.create_api(func)
 
         def doexc(e: ValidationError | FlaskValueError) -> Response:
-            onexc = config.onexc or self._onexc
+            onexc = config.onexc or self.config.onexc
             if onexc is not None:
                 errs = cast(list[ErrorDict], e.errors())
-                return onexc(errs, result)
-            return self.onexc(e, result=result)
+                return onexc(errs, result or False)
+            return self.onexc(e, result=result or False)
 
         @wraps(func)
         def api_func(*_args, **kwargs):
@@ -575,7 +640,7 @@ class Api:
         config: Config,
     ) -> JsonDict:
         # requires a request context
-        decoding = self.decoding if config.decoding is None else config.decoding
+        decoding = self.config.decoding if config.decoding is None else config.decoding
 
         if request.is_json:
             json = request.json
@@ -722,7 +787,7 @@ class DebugApi(Api):
         self,
         config: Config,
     ) -> JsonDict:
-        decoding = self.decoding if config.decoding is None else config.decoding
+        decoding = self.config.decoding if config.decoding is None else config.decoding
 
         data = self.data
 
