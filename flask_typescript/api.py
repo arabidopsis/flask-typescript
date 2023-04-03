@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from contextlib import contextmanager
 from dataclasses import dataclass
 from dataclasses import MISSING
 from dataclasses import replace
@@ -152,11 +153,20 @@ class Api:
             config,
         )
 
-    def add(self, cls: type[BaseModel]) -> None:
+    @contextmanager
+    def namespace(self, ns: dict[str, Any]):
+        old = self.builder.ns
+        self.builder.ns = ns
+        yield self
+        self.builder.ns = old
+
+    def add(self, *classes: type[BaseModel]) -> None:
         """Add random pydantic class to `flask ts` output"""
-        if not lenient_issubclass(cls, BaseModel):
-            raise ValueError(f"{cls.__name__} is not a pydantic class")
-        self.dataclasses.add(cls)
+        for cls in classes:
+            if not lenient_issubclass(cls, BaseModel):
+                raise ValueError(f"{cls.__name__} is not a pydantic class")
+        for cls in classes:
+            self.dataclasses.add(cls)
 
     def create_api(
         self,

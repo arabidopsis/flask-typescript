@@ -16,6 +16,23 @@ class B(BaseModel):
 
 
 class TestApi(unittest.TestCase):
+    def test_LocalPydantic(self) -> None:
+        """Test NameError in local pydantic definition"""
+
+        class A(BaseModel):
+            a: int
+
+        def func(a: A) -> A:
+            a.a += 2
+            return a
+
+        data: MultiDict = ImmutableMultiDict([("a.a", "1")])
+
+        api = DebugApi("Debug", data)
+
+        with self.assertRaises(NameError):
+            _ = api(func)
+
     def test_Func(self) -> None:
         """Test argument passing"""
 
@@ -33,9 +50,8 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data)
         # because A is defined locally
-        api.builder.ns = locals()
-
-        ff = api(func)
+        with api.namespace(locals()):
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -56,9 +72,8 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data)
         # because A is defined locally
-        api.builder.ns = locals()
-
-        ff = api(func)
+        with api.namespace(locals()):
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 400)
@@ -85,13 +100,13 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, decoding="jquery")
         # because A is defined locally
-        api.builder.ns = locals()
 
         def func(a: list[int], score: int) -> A:
             a = [v + score for v in a]
             return A(a=a)
 
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -109,13 +124,13 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, decoding="jquery")
         # because A is defined locally
-        api.builder.ns = locals()
 
         def func(arg: A, score: int) -> A:
             x = [v + score for v in arg.a]
             return A(a=x, myb=arg.myb)
 
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -131,13 +146,13 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, decoding="devalue")
         # because A is defined locally
-        api.builder.ns = locals()
 
         def func(arg: A, score: int) -> A:
             x = [v + score for v in arg.a]
             return A(a=x, myb=arg.myb)
 
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -155,12 +170,12 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, decoding="devalue")
         # because A is defined locally
-        api.builder.ns = locals()
 
         def func(arg: A) -> A:
             return A(date=date.today(), dt=arg.dt)
 
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -183,9 +198,9 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, result=True)
         # because A is defined locally
-        api.builder.ns = locals()
 
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -212,9 +227,8 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data, result=True)
         # because A is defined locally
-        api.builder.ns = locals()
-
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
@@ -252,9 +266,8 @@ class TestApi(unittest.TestCase):
 
         api = DebugApi("Debug", data)
         # because A is defined locally
-        api.builder.ns = locals()
-
-        ff = api(func)
+        with api.namespace(locals()) as api:
+            ff = api(func)
 
         result = ff()
         self.assertEqual(result.status_code, 200)
