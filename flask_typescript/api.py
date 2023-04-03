@@ -22,6 +22,7 @@ from flask import make_response
 from flask import request
 from flask import Response
 from pydantic import BaseModel
+from pydantic import create_model
 from pydantic.error_wrappers import ValidationError
 from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
@@ -114,6 +115,24 @@ def funcname(func: FunctionType) -> str:
     return func.__name__
 
 
+def make_pydantic(
+    name: str,
+    *,
+    annotations: dict[str, Any],
+    defaults: dict[str, Any],
+) -> type[BaseModel]:
+    # return type(
+    #     name,
+    #     (BaseModel,),
+    #     dict(__annotations__=annotations, **defaults),
+    # )
+    d = defaults.copy()
+    for k, typ in annotations.items():
+        d[k] = (typ, ... if k not in defaults else defaults[k])
+
+    return create_model(name, **d)
+
+
 class Api:
     builder = TSBuilder()
 
@@ -168,6 +187,9 @@ class Api:
         for cls in classes:
             self.dataclasses.add(cls)
 
+    def get_type_hints(self, func: DecoratedCallable):
+        return get_type_hints(func, localns=self.builder.ns, include_extras=False)
+
     def create_api(
         self,
         func: DecoratedCallable,
@@ -175,7 +197,7 @@ class Api:
         # we just need a few access functions that
         # fetch into Flask ImmutableMultiDict object (e.g. request.values)
         # and to deal with simple non-pydantic types (e.g. list[int])
-        hints = get_type_hints(func, localns=self.builder.ns, include_extras=False)
+        hints = self.get_type_hints(func)
 
         defaults = {
             k: v.default
@@ -238,7 +260,7 @@ class Api:
                     hasdefault=name in defaults,
                 )
                 self.dataclasses.add(typ)
-                return lambda values: convert(values)
+                return convert
             else:
                 if typ == FileStorage:
                     has_file_storage = True
@@ -257,13 +279,14 @@ class Api:
         if asjson:
             self.dataclasses.add(hints["return"])
 
-        if not has_file_storage and len(args) > 0:
+        if not has_file_storage and len(args) > 1:
             # create a pydantic type from function arguments
-            pydant = type(
+            pydant = make_pydantic(
                 self.typename(func),
-                (BaseModel,),
-                dict(__annotations__=args, **defaults),
+                annotations=args,
+                defaults=defaults,
             )
+
             self.dataclasses.add(pydant)  # type: ignore
 
         return asjson, embed, cargs
