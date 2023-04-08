@@ -11,6 +11,7 @@ from types import FunctionType
 from typing import Any
 from typing import Callable
 from typing import cast
+from typing import get_args
 from typing import get_type_hints
 from typing import TypeAlias
 from typing import TypeVar
@@ -233,12 +234,13 @@ class Api:
 
         def cvt(name: str, typ: type[Any]) -> Callable[[JsonDict], Any]:
             nonlocal has_file_storage
-            if hasattr(typ, "__args__"):
+            targs = get_args(typ)
+            if targs:
                 # check type is list,set,tuple....
                 # assume  list[int], set[float] etc.
-                if len(typ.__args__) > 1:
+                if len(targs) > 1:
                     raise TypeError(f"can't do multi arguments {name}[{typ}]")
-                arg = typ.__args__[0]
+                arg = targs[0]
                 if arg is Ellipsis:
                     raise TypeError("... ellipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter

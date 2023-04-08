@@ -18,6 +18,8 @@ from typing import Any
 from typing import Callable
 from typing import cast
 from typing import ForwardRef
+from typing import get_args
+from typing import get_origin
 from typing import get_type_hints
 from typing import Iterator
 from typing import Literal
@@ -34,6 +36,15 @@ from werkzeug.datastructures import FileStorage
 from .zod import TSField
 from .zod import ZOD
 from .zod import ZZZ
+
+try:
+    from typing import is_typeddict
+except ImportError:
+
+    def is_typeddict(tp: object) -> bool:
+        from typing import _TypedDictMeta  # type: ignore
+
+        return isinstance(tp, _TypedDictMeta)
 
 
 INDENT = "    "
@@ -56,12 +67,6 @@ def is_file_storage(typ: Any) -> bool:
     return isinstance(typ, type) and issubclass(typ, FileStorage)
 
 
-def is_typeddict(o):
-    from typing import _TypedDictMeta
-
-    return isinstance(o, _TypedDictMeta)
-
-
 def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     if not is_dataclass_type(cls):
         raise TypeError(
@@ -71,8 +76,8 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     def get_default(f: Field) -> Any:
         if f.default is not MISSING:
             return f.default
-        if f.default_factory is not MISSING:  # type: ignore
-            return f.default_factory()  # type: ignore
+        if f.default_factory is not MISSING:
+            return f.default_factory()
         return MISSING
 
     return {
@@ -353,15 +358,19 @@ class TSBuilder:
         if isinstance(typ, TypeVar):
             return self.typevar_to_zod(typ)
 
-        if hasattr(typ, "__origin__"):
-            # e.g. cls is the <class 'list'> while typ is list[arg]
-            cls = typ.__origin__
-        else:
-            cls = typ  # str, etc.
+        # e.g. cls is the <class 'list'> while typ is list[int]
+        cls = get_origin(typ)
+        if cls is None:
+            cls = typ
+        # if hasattr(typ, "__origin__"):
+        #     cls = typ.__origin__
+        # else:
+        #     cls = typ  # str, etc.
 
         is_type = isinstance(cls, type)
-        if hasattr(typ, "__args__"):
-            iargs = self.arglist_to_zod(typ.__args__)
+        targs = get_args(typ)
+        if targs:
+            iargs = self.arglist_to_zod(targs)
 
             if is_type and issubclass(cls, Mapping):
                 # e.g. dict[str, int]
