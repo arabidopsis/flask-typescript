@@ -13,7 +13,6 @@ from typing import Callable
 from typing import cast
 from typing import get_type_hints
 from typing import TypeAlias
-from typing import TypeGuard
 from typing import TypeVar
 
 import click
@@ -37,7 +36,6 @@ from .typing import Literal
 from .typing import TSBuilder
 from .typing import TSField
 from .typing import TSInterface
-from .utils import dedottify
 from .utils import FlaskValueError
 from .utils import getdict
 from .utils import jquery_form
@@ -46,7 +44,6 @@ from .utils import lenient_issubclass
 from .utils import maybe_close
 from .utils import multidict_json
 from .utils import tojson
-from .utils import unflatten
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
@@ -121,6 +118,8 @@ def make_pydantic(
     annotations: dict[str, Any],
     defaults: dict[str, Any],
 ) -> type[BaseModel]:
+    """create a pydantic class"""
+    # this seems to work fine
     # return type(
     #     name,
     #     (BaseModel,),
@@ -484,63 +483,3 @@ class Api:
             if not without_interface:
                 for api in d:
                     api.show_interface(api.name, file=fp)
-
-
-def multi(val) -> TypeGuard[MultiDict]:
-    return isinstance(val, MultiDict)
-
-
-class DebugApi(Api):
-    """Version of Api that doesn't require a request context. Used for testing"""
-
-    def __init__(
-        self,
-        name: str,
-        data: MultiDict | dict[str, Any] | str,
-        *,
-        onexc: ExcFunc | None = None,
-        decoding: Decoding = None,
-        result: bool = False,
-    ):
-        super().__init__(
-            name,
-            onexc=onexc,
-            decoding=decoding,
-            result=result,
-        )
-        self.data = data
-
-    def get_req_values(
-        self,
-        config: Config,
-    ) -> JsonDict:
-        decoding = self.config.decoding if config.decoding is None else config.decoding
-
-        data = self.data
-
-        if decoding == "jquery":
-            if not multi(data):
-                raise TypeError("not a MultiDict for from_jquery")
-            data = jquery_form(data)
-        elif decoding == "devalue":
-            if multi(data):
-                raise TypeError("not a json object for as_devalue")
-            if isinstance(data, str):
-                from .devalue.parse import parse
-
-                data = parse(data)
-        else:
-            if multi(data):
-                data = dedottify(unflatten(data))
-
-        assert isinstance(data, dict)
-
-        return data
-
-    def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
-        return Response(stuff, code, headers)
-
-    @property
-    def is_json(self):
-        # json are just pure dictionaries....
-        return not isinstance(self.data, MultiDict)

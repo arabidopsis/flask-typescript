@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from werkzeug.datastructures import ImmutableMultiDict
 from werkzeug.datastructures import MultiDict
 
-from flask_typescript.api import DebugApi
+from flask_typescript.debug import DebugApi
 
 
 class B(BaseModel):

@@ -10,6 +10,15 @@ export type Result<T> =
     | { success: true, result: T }
     | { success: false, error: ValidationError }
 
+export type Arg = {
+    query: string
+    selected: number[]
+    doit?: boolean /* =false */
+    date: string
+    val: number
+    arg5: Arg5
+    checked?: string[] /* =['aaa'] */
+}
 export type Arg5 = {
     query: string
 }
@@ -20,36 +29,21 @@ export type FuncExtra = {
     arg: Arg
     extra: number
 }
-export type FuncArg5 = {
-    extra: ArgXX[]
-}
-export type FuncArg6 = {
-    extra: ArgXX[]
-}
-export type Arg = {
-    query: string
-    selected: number[]
-    doit?: boolean /* =false */
-    date: string
-    val: number
-    arg5: Arg5
-    checked?: string[] /* =['aaa'] */
-}
-export type Ret1 = {
-    val: string[]
-    res: string
-}
 export type FuncFull = {
-    arg: Arg
     extra?: number /* =1 */
+    arg: Arg
+}
+export type FuncQqq = {
+    b?: number /* =5 */
+    a: number
 }
 export type Json = {
     a: number
     b: number
 }
-export type FuncQqq = {
-    a: number
-    b?: number /* =5 */
+export type Ret1 = {
+    val: string[]
+    res: string
 }
 export interface Base {
     full: (arg: Arg, extra?: number /* =1 */)=> Promise<Arg>

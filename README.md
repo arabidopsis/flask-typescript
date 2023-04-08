@@ -12,6 +12,14 @@ fraught part of web development.
 Also, we want to make it easier to send `FormData`
 data.
 
+## Warning:
+
+Please note that we are trying to ensure synchronization between python and
+typescript "types" during an HTTP exchange of data. Because of the hysteresis
+between the two languages and the serialisation requirements of JSON:
+**only a subset of pydantic/typescript types will ever be supported**.
+Keep it simple people -- you'll be happier, I'll be happier :).
+
 ## Usage
 
 ```python
@@ -20,7 +28,7 @@ from flask_typescript.api import Api
 from pydantic import BaseModel
 
 app = Flask(__name__)
-api = Api(__name__)
+api = Api('name_that_will_appear_in_the_typescript_output')
 
 class User(BaseModel):
     name: str
@@ -43,6 +51,7 @@ Run  (say) `flask ts > src/types.d.ts`
 Then on the client we can do:
 
 ```typescript
+import type {User} from './types'
 async function user_ok(user:User): Promise<User> {
     const resp = await fetch('/user_ok', {
                 method:'post',
@@ -66,6 +75,7 @@ const user2 = await user_ok(user)
 ## FormData
 
 ```typescript
+import type {User} from './types'
 async function user_ok(formData:FormData): Promise<User> {
     const resp = await fetch('/user_ok', {
                 method:'post',
@@ -75,7 +85,7 @@ async function user_ok(formData:FormData): Promise<User> {
     if (!resp.ok) {
         throw new Error("no good!")
     }
-    return await resp.json()
+    return await resp.json() as User
 }
 const login = document.forms['login']
 login.addEventListener('submit', async (e) => {
