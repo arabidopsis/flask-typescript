@@ -21,7 +21,7 @@ def multi(val) -> TypeGuard[MultiDict]:
 
 
 class DebugApi(Api):
-    """Version of Api that doesn't require a request context. Used for testing"""
+    """Version of Api that doesn't require a request context. Used only for testing"""
 
     def __init__(
         self,

@@ -492,7 +492,7 @@ class TSBuilder:
         if isinstance(value, str):  # WARNING: *before* test for Sequence!
             return repr(value)
         if isinstance(value, bytes):  # WARNING: *before* test for Sequence!
-            return repr(value)[1:]  # chop b'xxx' off
+            return repr(value)[1:]  # chop b off b'xxx'
         if isinstance(value, collections.abc.Sequence):
             args = ", ".join(ts_repr(v) for v in value)
             return f"[{args}]"
