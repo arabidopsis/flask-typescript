@@ -281,12 +281,14 @@ class TSBuilder:
         ns: Any | None = None,  # local namespace for typing.get_type_hints
         *,
         use_name: bool = True,  # use name for dataclasses, pydantic classes
+        ignore_defaults: bool = False,
     ):
         self.build_stack: list[TSTypeable] = []
         self.seen: dict[str, str] = {}
         self.ns = ns
         self.built: set[str] = set()
         self.use_name = use_name
+        self.ignore_defaults = ignore_defaults
 
     def process_seen(
         self,
@@ -427,7 +429,7 @@ class TSBuilder:
             yield ts_type_as_zod.field(
                 name=name,
                 default=self.ts_repr(annotation.default)
-                if annotation.has_default
+                if annotation.has_default and not self.ignore_defaults
                 else None,
             )
 
