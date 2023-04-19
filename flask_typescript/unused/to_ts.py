@@ -5,8 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from .typing import INDENT
-from .typing import NL
+from ..typing import INDENT
+from ..typing import NL
 
 # UNUSED ....
 

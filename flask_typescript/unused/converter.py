@@ -5,13 +5,13 @@ from dataclasses import MISSING
 from typing import Any
 from typing import Callable
 
-from .types import JsonDict
-from .types import MaybeDict
-from .types import MissingDict
-from .types import ModelType
-from .types import ModelTypeOrMissing
-from .utils import FlaskValueError
-from .utils import getdict
+from ..types import JsonDict
+from ..types import MaybeDict
+from ..types import MissingDict
+from ..types import ModelType
+from ..types import ModelTypeOrMissing
+from ..utils import FlaskValueError
+from ..utils import getdict
 
 # UNUSED...
 
