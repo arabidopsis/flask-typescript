@@ -85,15 +85,15 @@ import { asjson, serializeFormData, findErrors } from './lib'
 })();
 
 
-import type { ArgXX, FuncArg5 } from './types'
+import type { ArgXX } from './types'
 
 const aa: ArgXX[] = [{
     query: 'qqvvvqqq'
 }, { query: 'xxxx2' }];
 
 
-const b: FuncArg5 = {
-    extra: aa,
+const b = {
+    extra: [aa],
 };
 
 
