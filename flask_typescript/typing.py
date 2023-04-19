@@ -11,6 +11,7 @@ from dataclasses import is_dataclass
 from dataclasses import MISSING
 from dataclasses import replace
 from datetime import date
+from datetime import datetime
 from importlib import import_module
 from inspect import signature
 from types import FunctionType
@@ -270,6 +271,7 @@ DEFAULTS: dict[type[Any], ZOD] = {
     decimal.Decimal: toz("number"),
     FileStorage: toz("File"),
     date: toz("string"),
+    datetime: toz("string"),
 }
 
 
@@ -472,6 +474,8 @@ class TSBuilder:
             else:
                 ret = self.get_dc_ts(cast(Type[Any], o))
                 self.built.add(ret.name)
+                if ret.name in self.seen:
+                    del self.seen[ret.name]
             return ret
         finally:
             self.build_stack.pop()
