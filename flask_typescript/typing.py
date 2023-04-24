@@ -12,6 +12,7 @@ from dataclasses import MISSING
 from dataclasses import replace
 from datetime import date
 from datetime import datetime
+from enum import Enum
 from importlib import import_module
 from inspect import signature
 from types import FunctionType
@@ -34,6 +35,7 @@ from pydantic.fields import ModelField
 from pydantic.generics import GenericModel
 from werkzeug.datastructures import FileStorage
 
+from .utils import lenient_issubclass
 from .zod import TSField
 from .zod import ZOD
 from .zod import ZZZ
@@ -53,7 +55,7 @@ NL = "\n"
 
 TSTypeable = Union[Type[Any], Callable[..., Any]]
 
-TSThing = Union["TSFunction", "TSInterface"]
+TSThing = Union["TSFunction", "TSInterface", "TSEnum"]
 
 
 def is_dataclass_type(obj: Any) -> bool:
@@ -255,6 +257,24 @@ class TSFunction:
 
     def _generic_args(self) -> str:
         return ZZZ.to_generic_args(self.args + [self.returntype])
+
+
+@dataclass
+class TSEnum:
+    name: str
+    fields: list[ZOD]
+    export: bool = True
+
+    def to_ts(self) -> str:
+        args = " | ".join(f.to_ts() for f in self.fields)
+        export = "export " if self.export else ""
+        return f"{export} type {self.name} = {args}"
+
+    def anonymous(self) -> ZOD:
+        return ZZZ.union(self.fields)
+
+    def __str__(self) -> str:
+        return self.to_ts()
 
 
 def toz(s):
@@ -471,6 +491,8 @@ class TSBuilder:
             ret: TSThing
             if isinstance(o, FunctionType):
                 ret = self.get_func_ts(cast(Callable[..., Any], o))
+            elif lenient_issubclass(o, Enum):
+                ret = self.get_enum_ts(cast(type[Enum], o))
             else:
                 ret = self.get_dc_ts(cast(Type[Any], o))
                 self.built.add(ret.name)
@@ -479,6 +501,12 @@ class TSBuilder:
             return ret
         finally:
             self.build_stack.pop()
+
+    def get_enum_ts(self, enum: type[Enum]) -> TSEnum:
+        return TSEnum(
+            name=enum.__name__,
+            fields=[ZZZ.literal(self.ts_repr(v.value)) for v in enum],
+        )
 
     def current_module(self) -> dict[str, Any]:
         if self.build_stack:
