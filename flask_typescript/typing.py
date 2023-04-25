@@ -320,6 +320,9 @@ class TSBuilder:
             seen = {}
         seen.update(self.seen)
         self.seen = {}
+        for name in self.built:
+            if name in seen:
+                del seen[name]
 
         for name, module in seen.items():
             yield self.create_builder(name, module)
