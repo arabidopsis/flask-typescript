@@ -148,18 +148,6 @@ def multidict_json(form: MultiDict) -> JsonDict:
     return dedottify(unflatten(form))
 
 
-@contextmanager
-def maybe_close(filename: str | None = None, mode="w"):
-    import sys
-
-    fp = open(filename, mode=mode) if filename is not None else sys.stdout
-    try:
-        yield fp
-    finally:
-        if filename is not None:
-            fp.close()
-
-
 def getdict(values: JsonDict, path: list[str] | None = None) -> JsonDict:
     if path is None:
         return values
@@ -204,3 +192,26 @@ class FlaskValueError(ValueError):
                 type=f"{self.exc_name}.{self.errtype}",
             ),
         ]
+
+
+@contextmanager
+def maybeclose(out: str | None, mode="rt"):
+    import sys
+
+    if out:
+        fp = open(out, mode)
+        close = True
+    else:
+        fp = sys.stdout  # type: ignore
+        close = False
+    try:
+        yield fp
+    finally:
+        if close:
+            fp.close()
+
+
+def unwrap(func):
+    while hasattr(func, "__wrapped__"):
+        func = func.__wrapped__
+    return func

@@ -1,31 +1,13 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from ..utils import maybeclose
 from .orm import dodatabase
 from .orm import find_models
 from .orm import model_ts
-
-
-@contextmanager
-def maybeclose(out: str | None, mode="rt"):
-    import sys
-
-    if out:
-        fp = open(out, mode)
-        close = True
-    else:
-        fp = sys.stdout  # type: ignore
-        close = False
-    try:
-        yield fp
-    finally:
-        if close:
-            fp.close()
 
 
 @click.command()

@@ -8,9 +8,11 @@ bp = Blueprint("bp", __name__)
 
 @bp.route("/very/<int:silly>")
 def silly(silly: int):
+    """This is some documentation"""
     return "OK"
 
 
+@bp.route("/<project>/very", defaults={"silly": "c"})
 @bp.route("/<project>/very/<any(a, b, c):silly>")
 def silly2(project: str, silly: str):
     return "OK"

@@ -7,13 +7,17 @@ from dataclasses import dataclass
 from dataclasses import replace
 from typing import Any
 from typing import Iterator
+from typing import Literal
 from typing import Sequence
+from typing import TextIO
 
 from flask import current_app
 from flask import Flask
 from werkzeug.routing import parse_converter_args
 from werkzeug.routing import Rule
 
+from ..typing import INDENT
+from ..typing import NL
 
 _rule_re = re.compile(
     r"""
@@ -87,18 +91,18 @@ class Fmt:
 
 
 @dataclass
-class ApiFunction:
+class Endpoint:
     endpoint: str
-    methods: list[str]
-    method: str
+    methods: list[Literal["GET", "POST"]]
     doc: str | None
     rule: str
     url_fmt_arguments: list[Fmt]
     url: str
     url_arguments: list[str]
     defaults: dict[str, Any]
+    server: str | None = None
 
-    def resolve_defaults(self, app: Flask | None = None) -> ApiFunction:
+    def resolve_defaults(self, app: Flask | None = None) -> Endpoint:
         values: dict[str, Any] = {}
         (app or current_app).inject_url_defaults(self.endpoint, values)
         if not values:
@@ -126,31 +130,49 @@ class ApiFunction:
                 return fmt.ts_type
         return None
 
-    def to_ts(self) -> str:
+    def to_ts(self, level: int = 1) -> str:
+        def default(fmt: Fmt) -> str:
+            if fmt.variable not in self.defaults:
+                return ""
+            d = repr(self.defaults[fmt.variable])
+
+            return f" = {d}"
+
         method = str(self.methods)
-        m1 = f"method: {method}"
+        indent = INDENT * level
+        m1 = f"methods: {method}"
+        cargs = [fmt for fmt in self.url_fmt_arguments if not fmt.is_static]
         args = ", ".join(
-            f"{fmt.variable}: {fmt.ts_type}"
-            for fmt in self.url_fmt_arguments
-            if not fmt.is_static
+            f"{fmt.variable}: {fmt.ts_type}{default(fmt)}" for fmt in cargs
         )
-        url = f"url({args}) {{ return `{self.url}`}}"
-        return ",\n".join([m1, url])
+        q1 = '"' if "." in self.endpoint else ""
+        if self.server:
+            server = f"{self.server} + "
+        else:
+            server = ""
+        url = f"url({args}) {{ return {server}`{self.url}` }}"
+
+        fields = [m1, url]
+
+        if self.doc:
+            s = self.doc.replace("`", r"\`")
+            fields.append(f"doc: `{s}`")
+
+        if self.defaults:
+            d = repr(self.defaults)
+            d = "{ " + d[1:-1] + " }"
+            fields.append(f"defaults: {d}")
+
+        body = f",{NL}{indent}".join(fields)
+
+        return f"{q1}{self.endpoint}{q1}: {{{NL}{indent}{body}{NL}{INDENT}}}"
 
 
-def sanitize_doc(s: str | None) -> str | None:
-    if s is None:
-        return None
-    s = re.sub(r"\s*[\r\n]+\s*", "\n" + (" " * 8), s) if s is not None else ""
-    return s.strip()
-
-
-class JavascriptAPI:
+class TypescriptAPI:
     def __init__(
         self,
         endpoints: str | Sequence[str] | None = None,
         *,
-        default_as_get: bool = False,
         inject_url_defaults: bool = False,
         static: bool = False,
     ):
@@ -160,12 +182,11 @@ class JavascriptAPI:
             endpoints = [endpoints]
         self.endpoints = endpoints
 
-        self.default_as_get = default_as_get
         self.static = static
         self.inject_url_defaults = inject_url_defaults
 
-    def get_endpoints(self, app: Flask) -> list[ApiFunction]:
-        ret: list[ApiFunction] = []
+    def get_endpoints(self, app: Flask, server: str | None = None) -> list[Endpoint]:
+        ret: list[Endpoint] = []
         # capture defaults first!
         defaults: dict[str, dict[str, Any]] = defaultdict(dict)
         for r in app.url_map.iter_rules():
@@ -174,11 +195,9 @@ class JavascriptAPI:
         for r in sorted(app.url_map.iter_rules(), key=lambda r: r.endpoint):
             if not r.methods or ("GET" not in r.methods and "POST" not in r.methods):
                 continue
-            endpoint, func_name = (
-                r.endpoint.split(".", 1) if "." in r.endpoint else (r.endpoint, "main")
-            )  # noqa:
+            blueprint = r.endpoint.split(".", 1)[0] if "." in r.endpoint else r.endpoint
 
-            if self.endpoints and endpoint not in self.endpoints:
+            if self.endpoints and blueprint not in self.endpoints:
                 continue
             if not self.static and "static" in r.endpoint:  # skip static
                 continue
@@ -186,6 +205,7 @@ class JavascriptAPI:
                 r,
                 app,
                 defaults=defaults[r.endpoint],
+                server=server,
             )
             if api is None:
                 continue
@@ -204,7 +224,8 @@ class JavascriptAPI:
         app: Flask,
         *,
         defaults: dict[str, Any] | None = None,
-    ) -> ApiFunction | None:
+        server: str | None = None,
+    ) -> Endpoint | None:
         view_func = app.view_functions[r.endpoint]
         if view_func is None:
             return None
@@ -214,23 +235,11 @@ class JavascriptAPI:
             defaults = {}
 
         doc = inspect.getdoc(view_func)
-        # doc = sanitize_doc(view_func.__doc__)
 
-        method = (
-            "GET"
-            if self.default_as_get and "GET" in r.methods
-            else (
-                "POST"
-                if "POST" in r.methods
-                else ("GET" if "GET" in r.methods else None)
-            )
-        )  # noqa:
-        if method is None:
-            return None
-
-        # u[0] is the converter and u[1] is its arguments if any
-        # u[0] is None for "static" and 'default' for string
-        # u[2] is variable name
+        # vf = unwrap(view_func)
+        # if hasattr(vf, '__typescript_api__'):
+        #     ts = vf.__typescript_api__
+        #     print(ts)
 
         url_fmt_arguments = [
             Fmt(u[0], parse_converter_args(u[1]) if u[1] is not None else None, u[2])
@@ -243,20 +252,16 @@ class JavascriptAPI:
         )
         url_arguments = [f.variable for f in url_fmt_arguments if not f.is_static]
 
-        # create a unique argument name for data arg
-        data_name = "data"
-        while data_name in url_arguments:
-            data_name += "_"
-        api = ApiFunction(
+        api = Endpoint(
             endpoint=r.endpoint,
-            methods=sorted(filter(lambda n: n in {"GET", "POST"}, r.methods)),
-            method=method,
+            methods=sorted(filter(lambda n: n in {"GET", "POST"}, r.methods)),  # type: ignore
             doc=doc,
             rule=r.rule,
             url=url,
             url_fmt_arguments=url_fmt_arguments,
             url_arguments=url_arguments,
             defaults=defaults,
+            server=server,
         )
 
         return api
@@ -265,13 +270,42 @@ class JavascriptAPI:
 def get_endpoints(
     app: Flask,
     endpoint: str | Sequence[str] | None = None,
-    default_as_get: bool = False,
     static: bool = False,
     inject_url_defaults: bool = False,
-) -> list[ApiFunction]:
-    return JavascriptAPI(
+    server: str | None = None,
+) -> list[Endpoint]:
+    return TypescriptAPI(
         endpoint,
-        default_as_get=default_as_get,
         inject_url_defaults=inject_url_defaults,
         static=static,
-    ).get_endpoints(app)
+    ).get_endpoints(app, server=server)
+
+
+PREAMBLE = """
+export interface Endpoint {
+    methods: ("GET" | "POST")[]
+    url: (...args: any[]) => string
+    doc?: string
+    defaults?: Record<string, string | number>
+}
+"""
+
+
+def endpoints_ts(app: Flask, out: TextIO, server: str | None = None):
+    eps = [
+        ep.to_ts(level=2)
+        for ep in get_endpoints(
+            app,
+            [],
+            static=False,
+            server="SERVER" if server else None,
+        )
+    ]
+    # print(ep.endpoint, ep.methods, ep.url_arguments, ep.url, ep.url_fmt_arguments)
+    body = f",{NL}{INDENT}".join(eps)
+    body = f"export const Endpoints = {{{NL}{INDENT}{body}{NL}}} satisfies Readonly<Record<string, Endpoint>>"
+    print(PREAMBLE, file=out)
+    if server is not None:
+        print(f'const SERVER = "{server}"', file=out)
+        print(file=out)
+    print(body, file=out)
