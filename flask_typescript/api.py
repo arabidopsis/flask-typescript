@@ -143,6 +143,12 @@ def add_orm_cli(app: Flask):
         pass
 
 
+def add_endpoint_cli(app: Flask):
+    from .endpoints.ui import endpoints
+
+    app.cli.add_command(endpoints)
+
+
 class Api:
     builder = TSBuilder()
 
@@ -438,6 +444,7 @@ class Api:
         if "flask-typescript" not in app.extensions:
             app.extensions["flask-typescript"] = set()
             add_orm_cli(app)
+            add_endpoint_cli(app)
 
             @app.cli.command("ts")
             @click.option(

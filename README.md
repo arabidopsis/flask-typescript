@@ -12,6 +12,23 @@ fraught part of web development.
 Also, we want to make it easier to send `FormData`
 data.
 
+## Install
+
+```python
+
+python -m pip install git+ssh://git@github.com/arabidopsis/flask-typescript
+
+python -m pip install 'flask-typescript @ git+ssh://git@github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqla]'
+```
+
+```python
+
+python -m pip install 'flask-typescript @ git+https://github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqla]'
+```
+or in the `pyproject.toml` file as
+
+flask_typescript = { git = "https://github.com/arabidopsis/flask-typescript.git", branch="main" ,rev = "7df8d83d4cc...." }
+
 ## Warning:
 
 Please note that we are trying to ensure synchronization between python and

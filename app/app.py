@@ -144,6 +144,9 @@ def json() -> Json:
     return Json(a=1, b=22)
 
 
+from .bp import bp
+
+app.register_blueprint(bp)
 from .orm.models import orm
 
 # from .models2 import Paper, Attachment, Location
