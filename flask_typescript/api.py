@@ -133,6 +133,16 @@ def make_pydantic(
     return create_model(name, **d)
 
 
+def add_orm_cli(app: Flask):
+    try:
+        from .orm.ui import tables, models
+
+        app.cli.add_command(tables)
+        app.cli.add_command(models)
+    except ImportError:
+        pass
+
+
 class Api:
     builder = TSBuilder()
 
@@ -427,6 +437,7 @@ class Api:
     def init_app(self, app: Flask) -> None:
         if "flask-typescript" not in app.extensions:
             app.extensions["flask-typescript"] = set()
+            add_orm_cli(app)
 
             @app.cli.command("ts")
             @click.option(

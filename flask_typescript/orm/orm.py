@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 from typing import TextIO
+from typing import TYPE_CHECKING
 
 from sqlalchemy import create_engine
 from sqlalchemy import Date
@@ -20,9 +21,11 @@ from sqlalchemy import TIMESTAMP
 from sqlalchemy.dialects.mysql import SET
 from sqlalchemy.exc import ArgumentError
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.sql.sqltypes import _Binary
 
 from .meta import Base
+from .meta import BaseDC
 from .meta import DCBase
 from .meta import get_type_hints_sqla
 from flask_typescript.typing import Annotation
@@ -33,6 +36,8 @@ from flask_typescript.typing import TSBuilder
 from flask_typescript.typing import TSTypeable
 from flask_typescript.utils import lenient_issubclass
 
+if TYPE_CHECKING:
+    from sqlalchemy.engine.url import URL
 
 TYPE = Literal[
     "text",
@@ -52,12 +57,17 @@ MAP = {
     "integer": "number",
     "float": "number",
     "boolean": "boolean",
+    "binary": "string // binary",
     "date": "string",
     "datetime": "string",
     "timestamp": "string",
     "json": "unknown",
     "any": "unknown",
 }
+
+
+def is_model(v) -> bool:
+    return lenient_issubclass(v, DeclarativeBase)  # or isinstance(v, DeclarativeMeta)
 
 
 @dataclass
@@ -190,7 +200,7 @@ def datacolumn(out: TextIO):
     print(b, file=out)
 
 
-def dodatbase(url: str, *tables: str, preamble: bool = True, out: TextIO):
+def dodatabase(url: str | URL, *tables: str, preamble: bool = True, out: TextIO):
     if preamble:
         datacolumn(out)
     engine = create_engine(url)
@@ -226,69 +236,46 @@ def get_annotations(cls: type[DeclarativeBase]) -> dict[str, Annotation]:
 
 class ModelBuilder(TSBuilder):
     def get_annotations(self, cls: TSTypeable) -> dict[str, Annotation]:
-        if lenient_issubclass(cls, DeclarativeBase):
+        if is_model(cls):
             return get_annotations(cls)  # type: ignore
         return super().get_annotations(cls)
 
 
-def model_ts(*Models: type[DCBase]):
+def model_ts(*Models: type[DCBase], out: TextIO):
     builder = ModelBuilder()
     # seen = set()
     for Model in Models:
         v = builder(Model)
         # seen.add(v.name)
-        print(v)
+        print(v, file=out)
 
     # for n in seen:
     #     if n in builder.seen:
     #         builder.seen.pop(n)
     for b in builder.process_seen():
         try:
-            print(b())
-        except AttributeError:
-            pass
+            print(b(), file=out)
+        except AttributeError as e:
+            print(f"// {e}", file=out)
 
 
-def run2(module: str):
+def find_models(module: str):
     from importlib import import_module
-    from sqlalchemy.exc import NoInspectionAvailable, ArgumentError
     from .meta import Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC
 
-    exclude = {Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC}
+    exclude = {Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC, DeclarativeMeta}
 
-    builder = ModelBuilder()
     m = import_module(module)
     if m is None:
         return
-    for k, v in m.__dict__.items():
-        if lenient_issubclass(v, DeclarativeBase):
+    for v in m.__dict__.values():
+        if is_model(v):
             if v in exclude:
                 continue
-            abs = getattr(v, "__abstract__", False)
-            if abs:
-                print("HERE", k, v)
-                try:
-                    v.__tablename__ = k
-                    del v.__abstract__
-
-                    # class x(v):
-                    #     __clsname__ = k
-                    #     __tablename__ = "xx"
-
-                    # v = x
-                except ArgumentError as e:
-                    print(e)
-                    continue
-            try:
-                print(v)
-                print(builder(v))
-            except NoInspectionAvailable as e:
-                print(e)
-                raise
-                pass
+            yield v
 
 
-def model_meta_ts(*Models: type[DCBase], preamble: bool = True, out: TextIO):
+def model_meta_ts(*Models: type[BaseDC], preamble: bool = True, out: TextIO):
     if preamble:
         datacolumn(out)
     for Model in Models:
@@ -304,16 +291,3 @@ def model_meta_ts(*Models: type[DCBase], preamble: bool = True, out: TextIO):
             m = model_metadata(Model)
 
         print(metadata_to_ts(name, m), file=out)
-
-
-# dodatbase(url)
-if __name__ == "__main__":
-    # run3()
-    import sys
-
-    dodatbase(sys.argv[1], *sys.argv[2:], out=sys.stdout)
-    # run2(sys.argv[1])
-    # run3()
-    # from .models import Paper, Attachment, Location
-
-    # model_meta_ts(Paper, Attachment, Location)

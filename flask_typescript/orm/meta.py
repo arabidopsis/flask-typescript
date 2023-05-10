@@ -35,7 +35,6 @@ def register_metadata(namespace):
         namespace["metadata"] = Registry[key]
 
 
-# from .sqla2 import db
 class MetaDC(DCTransformDeclarative):
     def __new__(metacls, name, bases, namespace, **kw):
         name = namespace.pop("__clsname__", name)

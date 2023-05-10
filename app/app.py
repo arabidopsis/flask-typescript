@@ -144,4 +144,10 @@ def json() -> Json:
     return Json(a=1, b=22)
 
 
+from .orm.models import orm
+
+# from .models2 import Paper, Attachment, Location
+
+# app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://mitoz:42AnalysT@127.0.0.1/suba4"
+app.extensions["models"] = orm("paper", "attachment", "location")
 api.init_app(app)

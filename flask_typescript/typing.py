@@ -268,7 +268,7 @@ class TSEnum:
     def to_ts(self) -> str:
         args = " | ".join(f.to_ts() for f in self.fields)
         export = "export " if self.export else ""
-        return f"{export} type {self.name} = {args}"
+        return f"{export}type {self.name} = {args}"
 
     def anonymous(self) -> ZOD:
         return ZZZ.union(self.fields)
