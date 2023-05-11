@@ -191,9 +191,9 @@ class TSInterface:
     def is_generic(self):
         return any(f.is_generic for f in self.fields)
 
-    def get_generics(self) -> list[ZOD]:
-        ret = [f.arg for f in self.fields if f.is_generic]
-        return ret
+    # def get_generics(self) -> list[ZOD]:
+    #     ret = [f.arg for f in self.fields if f.is_generic]
+    #     return ret
 
     def to_ts(self) -> str:
         def ts_fields() -> str:

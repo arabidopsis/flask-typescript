@@ -294,7 +294,7 @@ def get_endpoints(
 
 
 PREAMBLE = """
-export interface Endpoint {
+export type Endpoint = {
     methods: ("GET" | "POST")[]
     url: (...args: any[]) => string
     doc?: string
@@ -307,7 +307,7 @@ def endpoints_ts(
     app: Flask,
     out: TextIO,
     server: str | None = None,
-    satisfies: bool = False,
+    satisfies: bool = True,
 ) -> None:
     endpoints = get_endpoints(
         app,

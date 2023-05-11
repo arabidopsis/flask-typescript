@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import click
 from flask import current_app
-from flask.cli import with_appcontext
 
+from ..cli import ts_cli
 from ..utils import maybeclose
 from .flask_endpoints import endpoints_ts
 
 
-@click.command()
-@with_appcontext
+@ts_cli.command()
 @click.option(
     "-o",
     "--out",

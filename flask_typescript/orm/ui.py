@@ -2,16 +2,15 @@ from __future__ import annotations
 
 import click
 from flask import current_app
-from flask.cli import with_appcontext
 
+from ..cli import ts_cli
 from ..utils import maybeclose
 from .orm import dodatabase
 from .orm import find_models
 from .orm import model_ts
 
 
-@click.command()
-@with_appcontext
+@ts_cli.command()
 @click.option(
     "-o",
     "--out",
@@ -53,8 +52,7 @@ def tables(
             dodatabase(url, *tables, preamble=not no_preamble, out=fp)
 
 
-@click.command()
-@with_appcontext
+@ts_cli.command()
 @click.option(
     "-o",
     "--out",
