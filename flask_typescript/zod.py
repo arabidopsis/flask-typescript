@@ -98,10 +98,12 @@ class TSField(ZOD):
     def get_generic_args(self) -> list[ZOD]:
         return self.arg.get_generic_args()
 
-    def to_ts(self) -> str:
+    def to_ts(self, astype: bool = False) -> str:
         args = self.arg.to_ts()
         default = "" if self.default is None else f" /* ={self.default} */"
         q = "?" if self.default is not None else ""
+        if astype:
+            return f"export type {self.name} = {args}{default}"
         return f"{self.name}{q}: {args}{default}"
 
     def anonymous(self) -> ZOD:
@@ -189,7 +191,7 @@ class BigZed:
             val = ""
 
         return StrZOD(
-            str_type=f"{val}({sargs})=> {returntype.to_ts()}",
+            str_type=f"{val}({sargs}) => {returntype.to_ts()}",
             generic=generic,
         )
 

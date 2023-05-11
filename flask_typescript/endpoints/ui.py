@@ -21,7 +21,7 @@ from .flask_endpoints import endpoints_ts
     help="server to connect to",
 )
 def endpoints(out: str | None, server: str | None):
-    """Typescript types from sqlalchemy Models"""
+    """Typescript types of Flask endpoints"""
 
     if server:
         server = server.rstrip("/")

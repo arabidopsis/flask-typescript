@@ -185,7 +185,7 @@ class TSInterface:
     export: bool = True
     indent: str = INDENT
     nl: str = NL
-    interface: Literal["interface", "type"] = "interface"
+    interface: Literal["interface", "type", "namespace"] = "namespace"
 
     @property
     def is_generic(self):
@@ -197,12 +197,18 @@ class TSInterface:
 
     def to_ts(self) -> str:
         def ts_fields() -> str:
+            astype = self.interface == "namespace"
             nl = self.nl
-            return nl.join(f"{self.indent}{f.to_ts()}" for f in self.fields)
+            return nl.join(
+                f"{self.indent}{f.to_ts(astype=astype)}" for f in self.fields
+            )
 
         export = "export " if self.export else ""
         nl = self.nl
-        eq = "= " if self.interface == "type" else ""
+        eq = ""
+        if self.interface == "type":
+            eq = "= "
+
         return f"{export}{self.interface} {self.name}{self._generic_args()} {eq}{{{nl}{ts_fields()}{nl}}}"
 
     def _generic_args(self) -> str:

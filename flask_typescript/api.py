@@ -45,7 +45,8 @@ from .utils import lenient_issubclass
 from .utils import maybeclose
 from .utils import multidict_json
 from .utils import tojson
-from .utils import unwrap
+
+# from .utils import unwrap
 
 DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
@@ -329,7 +330,7 @@ class Api:
         ts = replace(ts, isasync=True)
         f = ts.anonymous().field(ts.name)
         self.funcs.append(f)
-        unwrap(func).__typescript_api__ = f
+        # unwrap(func).__typescript_api__ = f
 
         asjson, embed, cargs = self.create_api(func)
 
