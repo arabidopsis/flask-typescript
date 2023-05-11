@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from contextlib import contextmanager
+from importlib.resources import read_text
 from typing import Any
 from typing import Iterator
 
@@ -11,6 +12,7 @@ from werkzeug.datastructures import MultiDict
 
 from .types import ErrorDict
 from .types import JsonDict
+
 
 ARG = re.compile(r"\[([^]]*)\]")
 
@@ -215,3 +217,10 @@ def unwrap(func):
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__
     return func
+
+
+def get_preamble() -> str:
+    return read_text("flask_typescript", "preamble.ts")
+    # path = Path(__file__).parent / "preamble.ts"
+    # with open(path, "rt") as fp:
+    #     return fp.read()
