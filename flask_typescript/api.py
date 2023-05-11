@@ -27,8 +27,8 @@ from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
-from .types import Error
 from .types import ErrorDict
+from .types import Failure
 from .types import ModelType
 from .types import ModelTypeOrMissing
 from .types import Success
@@ -144,6 +144,7 @@ class Api:
         onexc: ExcFunc | None = None,
         decoding: Decoding = None,
         result: bool = False,
+        function_types: bool = False,
     ):
         if "." in name:
             name = name.split(".")[-1].title()
@@ -153,6 +154,7 @@ class Api:
 
         self.min_py = 1
         self.config = Config(onexc=onexc, decoding=decoding, result=result)
+        self.function_types = function_types
 
     def __call__(
         self,
@@ -281,7 +283,7 @@ class Api:
         if asjson:
             self.dataclasses.add(hints["return"])
 
-        if not has_file_storage and len(args) > 1:
+        if self.function_types and not has_file_storage and len(args) > 1:
             # create a pydantic type from function arguments
             pydant = make_pydantic(
                 self.typename(func),
@@ -395,7 +397,7 @@ class Api:
         if not result:
             v = e.json()
         else:
-            v = tojson(Error(error=e.errors()))
+            v = tojson(Failure(error=e.errors()))
         return self.make_response(
             v,
             200 if result else 400,

@@ -26,15 +26,20 @@ T = TypeVar("T")
 
 class Success(GenericModel, Generic[T]):
     result: T
-    success: Literal[True] = True
+    type: Literal["success"] = "success"
+
+
+class Failure(BaseModel):
+    error: list[ErrorDict]
+    type: Literal["failure"] = "failure"
 
 
 class Error(BaseModel):
-    error: list[ErrorDict]
-    success: Literal[False] = False
+    error: Any
+    type: Literal["error"] = "error"
 
 
-Result = Success | Error
+Result = Success | Failure | Error
 
 
 MaybeDict: TypeAlias = dict[str, Any] | None

@@ -206,12 +206,12 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertTrue(result.is_json)
         json = result.json
-        self.assertTrue(json.get("success"))
+        self.assertTrue(json.get("type") == "success")
         self.assertEqual(A(**json["result"]), A(a=3, b="2"))
 
     def test_ResultFail(self) -> None:
         """Test result fail"""
-        from flask_typescript.types import Error
+        from flask_typescript.types import Failure
 
         class A(BaseModel):
             a: int
@@ -234,7 +234,7 @@ class TestApi(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertTrue(result.is_json)
         json = result.json
-        self.assertFalse(json.get("success"))
+        self.assertFalse(json.get("type") == "success")
         errors = [
             {
                 "loc": ("aa", "a"),
@@ -242,7 +242,7 @@ class TestApi(unittest.TestCase):
                 "type": "type_error.integer",
             },
         ]
-        self.assertEqual(Error(**json), Error(error=errors))
+        self.assertEqual(Failure(**json), Failure(error=errors))
 
     def test_Simple(self) -> None:
         """Test simple argument passing"""

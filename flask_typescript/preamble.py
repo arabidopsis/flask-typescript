@@ -9,6 +9,7 @@ export type ValidationError = {
 }[]
 
 export type Result<T> =
-    | { success: true, result: T }
-    | { success: false, error: ValidationError }
+    | { type: 'success', result: T }
+    | { type: 'failure', error: ValidationError }
+    | { type: 'error', error: any }
 """
