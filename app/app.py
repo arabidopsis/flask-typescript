@@ -54,6 +54,8 @@ class ArgXX(BaseModel):
 
 app = Flask(__name__)
 
+app.config.from_prefixed_env()  # type: ignore
+
 api = Api("Base", result=False)
 
 
@@ -151,6 +153,5 @@ from .orm.models import orm
 
 # from .models2 import Paper, Attachment, Location
 
-# app.config["SQLALCHEMY_DATABASE_URI"] = "mysql://mitoz:42AnalysT@127.0.0.1/suba4"
 app.extensions["models"] = orm("paper", "attachment", "location")
 api.init_app(app)

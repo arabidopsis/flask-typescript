@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Literal
+from typing import Any
 from typing import TextIO
 from typing import TYPE_CHECKING
 
@@ -24,33 +23,22 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.sql.sqltypes import _Binary
 
+from ..dc import DataColumn
+from ..dc import metadata_to_ts
+from ..typing import Annotation
+from ..typing import INDENT
+from ..typing import MISSING
+from ..typing import TSBuilder
+from ..typing import TSTypeable
+from ..utils import lenient_issubclass
 from .meta import Base
 from .meta import BaseDC
 from .meta import DCBase
 from .meta import get_type_hints_sqla
-from flask_typescript.typing import Annotation
-from flask_typescript.typing import INDENT
-from flask_typescript.typing import MISSING
-from flask_typescript.typing import NL
-from flask_typescript.typing import TSBuilder
-from flask_typescript.typing import TSTypeable
-from flask_typescript.utils import lenient_issubclass
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.url import URL
 
-TYPE = Literal[
-    "text",
-    "integer",
-    "float",
-    "boolean",
-    "binary",
-    "date",
-    "datetime",
-    "timestamp",
-    "json",
-    "any",
-]
 
 MAP = {
     "text": "string",
@@ -70,51 +58,7 @@ def is_model(v) -> bool:
     return lenient_issubclass(v, DeclarativeBase)  # or isinstance(v, DeclarativeMeta)
 
 
-@dataclass
-class DataColumn:
-    name: str
-    type: TYPE = "text"
-    nullable: bool = False
-    primary_key: bool = False
-    multiple: bool = False
-    values: list[str] | None = None
-    maxlength: int = -1
-
-    def _bool(self, name: str) -> str:
-        return f"{name}: {str(getattr(self,name)).lower()}"
-
-    def _attr(self, name: str) -> str:
-        val = getattr(self, name)
-        return f"{name}: {val}"
-
-    def _str(self, name: str) -> str:
-        return f'{name}: "{getattr(self,name)}"'
-
-    def to_ts(self, prefix="") -> str:
-        name = self._str("name")
-        typ = self._str("type")
-        primary_key = self._bool("primary_key")
-        multiple = self._bool("multiple")
-        nullable = self._bool("nullable")
-        if self.maxlength > 0:
-            maxlength = self._attr("maxlength")
-        else:
-            maxlength = None
-        values = "null" if self.values is None else repr(self.values)
-        values = f"values: {values}"
-
-        tab = prefix + INDENT
-        attr = [name, typ, nullable, primary_key, multiple, values, maxlength]
-        ret = f",{NL}{tab}".join(a for a in attr if a is not None)
-        return f"{{{NL}{tab}{ret}{NL}{prefix}}}"
-
-    def __str__(self):
-        return self.to_ts()
-
-
 CLEAN = re.compile(r'[/\'"()]+')
-
-from typing import Any
 
 
 def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
@@ -127,16 +71,40 @@ def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
     return ret
 
 
+def chop(s: str) -> str:
+    for q in ['"', "'"]:
+        if s.startswith(q) and s.endswith(q):
+            return s[1:-1]
+    return s
+
+
 def model_metadata(model: type[DeclarativeBase]) -> dict[str, DataColumn]:
     columns = model.__table__.columns
     ret = {}
     for c in columns:
+        default = c.default
+        if callable(default):
+            default = default()
+        if default is None:
+            if c.server_default:
+                d = c.server_default
+                if hasattr(d, "arg"):
+                    default = chop(str(d.arg))
+                else:
+                    default = "$SERVER_DEFAULT$"
+        else:
+            default = str(default)
         typ = c.type
         name = CLEAN.sub("", c.key).replace(" ", "_")
         if name[0].isdigit():
             name = "_" + name
 
-        d = {"name": c.key, "primary_key": c.primary_key, "nullable": c.nullable}
+        d = {
+            "name": c.key,
+            "primary_key": c.primary_key,
+            "nullable": c.nullable,
+            "default": default,
+        }
         if isinstance(typ, SET):
             ret[name] = DataColumn(
                 values=list(typ.values),
@@ -179,16 +147,6 @@ def model_to_ts(name: str, meta: dict[str, DataColumn]) -> str:
         s = f"{INDENT}{k}: {type}"
         out.append(s)
     out.append("}")
-
-    return "\n".join(out)
-
-
-def metadata_to_ts(name: str, meta: dict[str, DataColumn]) -> str:
-    out = [f"export const {name} = {{"]
-    for k, v in meta.items():
-        s = f"{INDENT}{k}: {v.to_ts(INDENT)},"
-        out.append(s)
-    out.append("} satisfies Readonly<Record<string, DataColumn>>")
 
     return "\n".join(out)
 

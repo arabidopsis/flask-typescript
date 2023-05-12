@@ -283,6 +283,72 @@ class TSEnum:
         return self.to_ts()
 
 
+class BaseBuilder:
+    def __init__(self, ns: dict[str, Any] | None = None):
+        self.build_stack: list[TSTypeable] = []
+        self.ns = ns
+        self.seen: dict[str, str] = {}
+        self.built: set[str] = set()
+
+    def get_annotations(self, cls: TSTypeable) -> dict[str, Annotation]:
+        return get_annotations(cls, self.ns)
+
+    def is_being_built(self, o: TSTypeable) -> bool:
+        return any(o == s for s in self.build_stack)
+
+    def current_module(self) -> dict[str, Any]:
+        if self.build_stack:
+            m = import_module(self.build_stack[-1].__module__)
+            return m.__dict__
+        return {}
+
+    # pylint: disable=too-many-return-statements
+    def ts_repr(self, value: Any) -> str:
+        ts_repr = self.ts_repr
+        if value is None:
+            return "null"
+        if isinstance(value, FunctionType):  # field(default_factory=lambda:...)
+            return ts_repr(value())
+        if isinstance(value, decimal.Decimal):
+            return repr(float(value))
+        if isinstance(value, str):  # WARNING: *before* test for Sequence!
+            return repr(value)
+        if isinstance(value, bytes):  # WARNING: *before* test for Sequence!
+            return repr(value)[1:]  # chop b off b'xxx'
+        if isinstance(value, collections.abc.Sequence):
+            args = ", ".join(ts_repr(v) for v in value)
+            return f"[{args}]"
+        if isinstance(value, collections.abc.Mapping):
+            args = ", ".join(f"{str(k)}: {ts_repr(v)}" for k, v in value.items())
+            return f"{{{args}}}"
+        if isinstance(value, bool):
+            return repr(value).lower()
+        # whatever...
+        return repr(value)
+
+    def process_seen(
+        self,
+        seen: dict[str, str] | None = None,
+    ) -> Iterator[Callable[[], TSThing]]:
+        if seen is None:
+            seen = {}
+        seen.update(self.seen)
+        self.seen = {}
+        for name in self.built:
+            if name in seen:
+                del seen[name]
+
+        for name, module in seen.items():
+            yield self.create_builder(name, module)
+
+    def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
+        def build_func():
+            m = import_module(module)
+            return self.get_type_ts(getattr(m, name))
+
+        return build_func
+
+
 def toz(s):
     return getattr(ZZZ, s)()
 
@@ -301,20 +367,17 @@ DEFAULTS: dict[type[Any], ZOD] = {
 }
 
 
-class TSBuilder:
+class TSBuilder(BaseBuilder):
     TS = DEFAULTS.copy()
 
     def __init__(
         self,
-        ns: Any | None = None,  # local namespace for typing.get_type_hints
+        ns: dict[str, Any] | None = None,  # local namespace for typing.get_type_hints
         *,
         use_name: bool = True,  # use name for dataclasses, pydantic classes
         ignore_defaults: bool = False,
     ):
-        self.build_stack: list[TSTypeable] = []
-        self.seen: dict[str, str] = {}
-        self.ns = ns
-        self.built: set[str] = set()
+        super().__init__(ns)
         self.use_name = use_name
         self.ignore_defaults = ignore_defaults
 
@@ -394,10 +457,6 @@ class TSBuilder:
         cls = get_origin(typ)
         if cls is None:
             cls = typ
-        # if hasattr(typ, "__origin__"):
-        #     cls = typ.__origin__
-        # else:
-        #     cls = typ  # str, etc.
 
         is_type = isinstance(cls, type)
         targs = get_args(typ)
@@ -444,9 +503,6 @@ class TSBuilder:
             args = args.array()
         return args
 
-    def get_annotations(self, cls: TSTypeable) -> dict[str, Annotation]:
-        return get_annotations(cls, self.ns)
-
     def get_field_types(
         self,
         cls: TSTypeable,
@@ -489,9 +545,6 @@ class TSBuilder:
 
         return TSFunction(name=func.__name__, args=args, returntype=returntype)
 
-    def is_being_built(self, o: TSTypeable) -> bool:
-        return any(o == s for s in self.build_stack)
-
     def get_type_ts(self, o: TSTypeable) -> TSThing:
         # main entrypoint
         self.build_stack.append(o)
@@ -515,33 +568,3 @@ class TSBuilder:
             name=enum.__name__,
             fields=[ZZZ.literal(self.ts_repr(v.value)) for v in enum],
         )
-
-    def current_module(self) -> dict[str, Any]:
-        if self.build_stack:
-            m = import_module(self.build_stack[-1].__module__)
-            return m.__dict__
-        return {}
-
-    # pylint: disable=too-many-return-statements
-    def ts_repr(self, value: Any) -> str:
-        ts_repr = self.ts_repr
-        if value is None:
-            return "null"
-        if isinstance(value, FunctionType):  # field(default_factory=lambda:...)
-            return ts_repr(value())
-        if isinstance(value, decimal.Decimal):
-            return repr(float(value))
-        if isinstance(value, str):  # WARNING: *before* test for Sequence!
-            return repr(value)
-        if isinstance(value, bytes):  # WARNING: *before* test for Sequence!
-            return repr(value)[1:]  # chop b off b'xxx'
-        if isinstance(value, collections.abc.Sequence):
-            args = ", ".join(ts_repr(v) for v in value)
-            return f"[{args}]"
-        if isinstance(value, collections.abc.Mapping):
-            args = ", ".join(f"{str(k)}: {ts_repr(v)}" for k, v in value.items())
-            return f"{{{args}}}"
-        if isinstance(value, bool):
-            return repr(value).lower()
-        # whatever...
-        return repr(value)
