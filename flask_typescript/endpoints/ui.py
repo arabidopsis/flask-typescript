@@ -19,11 +19,12 @@ from .flask_endpoints import endpoints_ts
     "--server",
     help="server to connect to",
 )
-def endpoints(out: str | None, server: str | None):
+@click.argument("includes", nargs=-1)
+def endpoints(includes: list[str], out: str | None, server: str | None):
     """Typescript types of Flask endpoints"""
 
     if server:
-        server = server.rstrip("/")
+        server = server.strip().rstrip("/")
 
     with maybeclose(out) as fp:
-        endpoints_ts(current_app, out=fp, server=server)
+        endpoints_ts(current_app, includes=includes, out=fp, server=server)
