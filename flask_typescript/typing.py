@@ -377,8 +377,7 @@ class TSBuilder:
                 or typ.__name__ in self.built
                 or self.use_name
             ):  # recursive
-                if is_arg:
-                    self.seen[typ.__name__] = typ.__module__
+                self.seen[typ.__name__] = typ.__module__
                 return ZZZ.ref(typ.__name__)  # just use name
             ret = self.get_type_ts(typ)
             # we are going to annonymize it e.g. => {key: number[], key2:string}

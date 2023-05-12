@@ -45,3 +45,11 @@ export type LinkedList = {
 export type GenericTuple<T= number | string> = {
     value: [T,number]
 }
+//>Child
+export type Child = {
+    val: number
+}
+//>Parent
+export type Parent = {
+    child: Child
+}

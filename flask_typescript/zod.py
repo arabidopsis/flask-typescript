@@ -177,6 +177,7 @@ class BigZed:
     def object(self, fields: Sequence[TSField]) -> ZOD:
         _args = list(fields)
         sfields = ", ".join(f.to_ts() for f in _args)
+        sfields = "{ " + sfields + " }"
 
         return StrZOD(str_type=sfields, generic=self._generic(_args))
 

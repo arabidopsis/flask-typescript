@@ -64,6 +64,14 @@ class GenericTuple(GenericModel, Generic[T]):
     value: tuple[T, int]
 
 
+class Child(BaseModel):
+    val: int
+
+
+class Parent(BaseModel):
+    child: Child
+
+
 GenericFunc_expected = "export type GenericFunc<T= number | string> = (a: T, b: T) => T"
 
 
@@ -135,6 +143,23 @@ class TestModels(unittest.TestCase):
         val = str(self.builder(GenericFunc))
 
         self.assertEqual(val, GenericFunc_expected)
+
+    def test_Seen(self):
+        """Test if child class is seen"""
+        builder = TSBuilder()
+        _ = builder(Parent)
+
+        self.assertTrue("Child" in builder.seen)
+
+    def test_Anonymous(self):
+        expect = """export type Parent = {
+    child: { val: number }
+}"""
+        builder = TSBuilder(use_name=False)
+        b = builder(Parent)
+
+        self.assertEqual({}, builder.seen)
+        self.assertEqual(expect, str(b))
 
 
 if __name__ == "__main__":
