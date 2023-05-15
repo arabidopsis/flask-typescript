@@ -242,7 +242,7 @@ class TestApi(unittest.TestCase):
                 "type": "type_error.integer",
             },
         ]
-        self.assertEqual(Failure(**json), Failure(error=errors))
+        self.assertEqual(Failure(**json), Failure(errors=errors))
 
     def test_Simple(self) -> None:
         """Test simple argument passing"""

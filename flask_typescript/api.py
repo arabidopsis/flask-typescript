@@ -397,7 +397,7 @@ class Api:
         if not result:
             v = e.json()
         else:
-            v = tojson(Failure(error=e.errors()))
+            v = tojson(Failure(errors=e.errors()))
         return self.make_response(
             v,
             200 if result else 400,

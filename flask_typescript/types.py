@@ -30,7 +30,7 @@ class Success(GenericModel, Generic[T]):
 
 
 class Failure(BaseModel):
-    error: list[ErrorDict]
+    errors: list[ErrorDict]
     type: Literal["failure"] = "failure"
 
 
@@ -39,7 +39,7 @@ class Error(BaseModel):
     type: Literal["error"] = "error"
 
 
-Result = Success | Failure | Error
+FlaskResult = Success | Failure | Error
 
 
 MaybeDict: TypeAlias = dict[str, Any] | None

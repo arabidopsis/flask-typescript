@@ -4,7 +4,10 @@ export type ValidationError = {
     type: string
 }[]
 
-export type Result<T> =
-    | { type: 'success', result: T }
-    | { type: 'failure', error: ValidationError }
-    | { type: 'error', error: any }
+export type FlaskResult<
+    Success extends Record<string, unknown> | undefined = Record<string, any>,
+    Invalid extends ValidationError = ValidationError
+> =
+    | { type: 'success'; result: Success }
+    | { type: 'failure'; errors: Invalid }
+    | { type: 'error'; error: any }
