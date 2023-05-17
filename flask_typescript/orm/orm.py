@@ -89,6 +89,7 @@ def model_metadata(model: type[DeclarativeBase]) -> dict[str, DataColumn]:
             if c.server_default:
                 d = c.server_default
                 if hasattr(d, "arg"):
+                    # e.g. text("0")
                     default = chop(str(d.arg))
                 else:
                     default = "$SERVER_DEFAULT$"

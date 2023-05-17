@@ -37,7 +37,7 @@ def dc_to_ts(self: DataColumn, prefix="") -> str:
         primary_key = _bool("primary_key")
         multiple = _bool("multiple")
         nullable = _bool("nullable")
-        default = _str("default") if self.default else None
+        default = _str("default") if self.default is not None else "default: null"
         if self.maxlength > 0:
             maxlength = _attr("maxlength")
         else:
