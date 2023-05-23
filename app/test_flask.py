@@ -77,3 +77,17 @@ class TestFlask(unittest.TestCase):
         self.assertTrue(response.is_json)
         a.selected = a.selected * score
         self.assertEqual(Arg(**response.json), a)
+
+    def test_Error(self):
+        """Test Error mode"""
+        with self.client:
+            response = self.client.post("/error")
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(response.is_json)
+        json = response.json
+        self.assertTrue("type" in json)
+        self.assertTrue("error" in json)
+        self.assertTrue("status" in json)
+        self.assertEqual(json["status"], 400)
+        self.assertEqual(json["type"], "error")
+        self.assertEqual(json["error"], "this has failed")

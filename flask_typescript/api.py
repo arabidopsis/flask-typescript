@@ -27,6 +27,7 @@ from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
+from .types import Error
 from .types import ErrorDict
 from .types import Failure
 from .types import ModelType
@@ -132,6 +133,18 @@ def make_pydantic(
         d[k] = (typ, ... if k not in defaults else defaults[k])
 
     return create_model(name, **d)
+
+
+class ApiError(ValueError):
+    """Create an Error similar to sveltekits error"""
+
+    def __init__(self, status: int, exc: Exception):
+        super().__init__()
+        self.status = status
+        self.exc = exc
+
+    def json(self, *, indent: None | int | str = 2) -> str:
+        return tojson(Error(status=self.status, error=str(self.exc)))
 
 
 class Api:
@@ -348,22 +361,30 @@ class Api:
                 return doexc(FlaskValueError(e, name))
 
             kwargs.update(args)
-            ret = func(**kwargs)
-            if asjson:
-                if not isinstance(ret, BaseModel):
-                    # this is a bug!
-                    raise ValueError(
-                        f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
+            try:
+                ret = func(**kwargs)
+                if asjson:
+                    if not isinstance(ret, BaseModel):
+                        # this is a bug!
+                        raise ValueError(
+                            f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
+                        )
+                    if result:
+                        ret = Success(result=ret)
+                    ret = self.make_response(
+                        ret.json(),
+                        200,
+                        {"Content-Type": "application/json"},
                     )
-                if result:
-                    ret = Success(result=ret)
-                ret = self.make_response(
-                    ret.json(),
-                    200,
+
+                return ret
+            except ApiError as e:
+                # ApiErrors turn into a sveltekit type="error"
+                return self.make_response(
+                    e.json(),
+                    400,
                     {"Content-Type": "application/json"},
                 )
-
-            return ret
 
         return api_func  # type: ignore
 

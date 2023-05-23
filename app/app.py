@@ -13,6 +13,7 @@ from pydantic import Field
 from werkzeug.datastructures import FileStorage
 
 from flask_typescript.api import Api
+from flask_typescript.api import ApiError
 
 
 class Arg5(BaseModel):
@@ -144,6 +145,12 @@ def arg6(extra: list[ArgXX]) -> Arg5:
 @api
 def json() -> Json:
     return Json(a=1, b=22)
+
+
+@app.post("/error")
+@api
+def error() -> Json:
+    raise ApiError(400, exc=ValueError("this has failed"))
 
 
 from .bp import bp

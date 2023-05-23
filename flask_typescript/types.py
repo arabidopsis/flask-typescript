@@ -35,6 +35,7 @@ class Failure(BaseModel):
 
 
 class Error(BaseModel):
+    status: int
     error: Any
     type: Literal["error"] = "error"
 
