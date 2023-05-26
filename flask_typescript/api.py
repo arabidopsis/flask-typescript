@@ -27,9 +27,9 @@ from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
-from .types import Error
 from .types import ErrorDict
 from .types import Failure
+from .types import Generic
 from .types import ModelType
 from .types import ModelTypeOrMissing
 from .types import Success
@@ -135,16 +135,23 @@ def make_pydantic(
     return create_model(name, **d)
 
 
-class ApiError(ValueError):
+T = TypeVar("T")
+
+
+class ApiError(ValueError, Generic[T]):
     """Create an Error similar to sveltekits error"""
 
-    def __init__(self, status: int, exc: Exception):
+    def __init__(self, status: int, payload: T):
         super().__init__()
         self.status = status
-        self.exc = exc
+        self.payload: T = payload
+
+    def toerror(self) -> Any:
+        return self.payload
 
     def json(self, *, indent: None | int | str = 2) -> str:
-        return tojson(Error(status=self.status, error=str(self.exc)))
+        payload = dict(status=self.status, error=self.toerror())
+        return tojson(payload, indent=indent)
 
 
 class Api:
