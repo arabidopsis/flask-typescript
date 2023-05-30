@@ -85,9 +85,8 @@ class TestFlask(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertTrue(response.is_json)
         json = response.json
-        self.assertTrue("type" in json)
+        # json = {'status':400, 'error': {'message': '...'}}
         self.assertTrue("error" in json)
         self.assertTrue("status" in json)
         self.assertEqual(json["status"], 400)
-        self.assertEqual(json["type"], "error")
-        self.assertEqual(json["error"], "this has failed")
+        self.assertEqual(json["error"], dict(message="this has failed"))

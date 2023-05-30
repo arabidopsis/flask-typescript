@@ -197,6 +197,10 @@ class Api:
 
     @contextmanager
     def namespace(self, ns: dict[str, Any]):
+        # used with:
+        # with api.namespace(locals()) as api:
+        #   ....
+        #
         old = self.builder.ns
         self.builder.ns = ns
         yield self
@@ -392,6 +396,8 @@ class Api:
                     400,
                     {"Content-Type": "application/json"},
                 )
+            except FlaskValueError as e:
+                return doexc(e)
 
         return api_func  # type: ignore
 

@@ -150,7 +150,7 @@ def json() -> Json:
 @app.post("/error")
 @api
 def error() -> Json:
-    raise ApiError(400, exc=ValueError("this has failed"))
+    raise ApiError(400, payload=dict(message="this has failed"))
 
 
 from .bp import bp

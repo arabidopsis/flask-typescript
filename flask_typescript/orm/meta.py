@@ -16,7 +16,7 @@ from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 Registry: dict[str | None, MetaData] = {}
 
 
-def register_metadata(namespace):
+def register_metadata(namespace: dict[str, Any]):
     if "__bind_key__" in namespace and "metadata" not in namespace:
         key = namespace.pop("__bind_key__")
         # namespace['metadata'] = SQLAlchemy()._make_metadata(key)
