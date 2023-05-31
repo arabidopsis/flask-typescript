@@ -1,0 +1,43 @@
+
+
+{%- for enums, name in enums %}
+class {{name}}(PyEnum):
+{% for n in enums %}
+    {{n|replace(' ','_')}} = "{{n}}"
+{%- endfor %}
+
+{% endfor %}
+
+{%- for enums, name in sets %}
+{{name}} = SET({{enums|join(',')}})
+{% endfor %}
+
+# original name {{name}}
+class {{model}}{% if not abstract %}({{base}}){% endif %}:
+    {% if abstract %}__abstract__ = True{% endif %}
+    {% if wt %}__tablename__ = "{{name}}"{% endif %}
+{% for c in columns %}
+    {% if c.column_name != c.name -%}
+    {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column("{{c.name}}", {{c.type}}
+                                {%- if not c.nullable %}, nullable=False{% endif %}
+                                {%- if c.index %}, index=True{%- endif %}
+                                {%- if c.unique %}, unique=True{% endif %}
+                                {%- if c.pk %}, primary_key=True{% endif %}
+                                {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
+    {%- else -%}
+    {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column({{c.type}}
+                                {%- if not c.nullable %}, nullable=False{% endif %}
+                                {%- if c.index %}, index=True{% endif %}
+                                {%- if c.unique %}, unique=True{% endif %}
+                                {%- if c.pk %}, primary_key=True{% endif %}
+                                {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
+    {%- endif %}
+{%- endfor %}
+
+    {% if indexes %}
+    __table_args__ = (
+        {%- for c in indexes %}
+                    Index("{{ c.name }}",{% for col in c.columns %} "{{col.name}}",  {% endfor %} unique={{c.unique}}),
+        {%- endfor %}
+                        )
+    {% endif %}

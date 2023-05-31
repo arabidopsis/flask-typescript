@@ -37,6 +37,62 @@ def typescript(
     Api.generate_api(current_app, out, without_interface, nosort)
 
 
+@ts_cli.command()
+@click.option(
+    "-i",
+    "--ignore-defaults",
+    is_flag=True,
+    help="don't output default values",
+)
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(dir_okay=False),
+    help="output file",
+)
+@click.option(
+    "--ns",
+    help="builder namespace",
+)
+@click.argument("modules", nargs=-1)
+def dataclasses(
+    out: str | None,
+    modules: tuple[str],
+    ignore_defaults: bool,
+    ns: str | None,
+):
+    """Generate typescript from dataclass/pydantic models specified in the command line modules"""
+    from importlib import import_module
+    from typing import Iterator
+    from pydantic import BaseModel
+    from pydantic.generics import GenericModel
+    from .typing import TSBuilder, is_pydantic_type, is_dataclass_type
+    from .utils import maybeclose
+
+    def find_py(module: str) -> Iterator[BaseModel]:
+        exclude = {BaseModel, GenericModel}
+
+        m = import_module(module)
+        if m is None:
+            return
+        for v in m.__dict__.values():
+            if is_pydantic_type(v) or is_dataclass_type(v):
+                if v in exclude:
+                    continue
+                yield v
+
+    namespace = None
+    if ns:
+        mm = import_module(ns)
+        if mm is not None:
+            namespace = mm.__dict__
+    builder = TSBuilder(ignore_defaults=ignore_defaults, ns=namespace)
+    with maybeclose(out) as fp:
+        for m in modules:
+            for model in find_py(m):
+                print(builder(model), file=fp)  # type: ignore
+
+
 # @ts_cli.command("formdata")
 # @click.option(
 #     "-o",

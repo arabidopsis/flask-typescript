@@ -10,6 +10,21 @@ from .orm import find_models
 from .orm import model_ts
 
 
+def geturl(url: str | None) -> list[str]:
+    if not url:
+        url = current_app.config.get("SQLALCHEMY_DATABASE_URI")
+        if url is None:
+            binds = current_app.config.get("SQLALCHEMY_BINDS")
+            if binds is None:
+                raise click.BadParameter("no SQLALCHEMY_DATABASE_URI configured")
+            urls = [str(u) for u in binds.values()]
+        else:
+            urls = [str(url)]
+    else:
+        urls = [url]
+    return urls
+
+
 @ts_cli.command()
 @click.option(
     "-o",
@@ -34,19 +49,7 @@ def tables(
     no_preamble: bool = False,
 ) -> None:
     """Typescript metadata from tables in flask_sqlalchemy"""
-
-    if not url:
-        url = current_app.config.get("SQLALCHEMY_DATABASE_URI")
-        if url is None:
-            binds = current_app.config.get("SQLALCHEMY_BINDS")
-            if binds is None:
-                raise click.BadParameter("no SQLALCHEMY_DATABASE_URI configured")
-            urls = [str(u) for u in binds.values()]
-        else:
-            urls = [str(url)]
-    else:
-        urls = [url]
-
+    urls = geturl(url)
     with maybeclose(out) as fp:
         for url in urls:
             dodatabase(url, *tables, preamble=not no_preamble, out=fp)
@@ -79,3 +82,52 @@ def models(modules: tuple[str], out: str | None):
                     continue
                 print(f"// {mod}")
                 model_ts(*Models, out=fp)
+
+
+@ts_cli.command()
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(dir_okay=False),
+    help="output file",
+)
+@click.option(
+    "--url",
+    help="sqlalchemy connection url to use",
+)
+@click.option("--base", default="Base", help="base class of models")
+@click.option("--abstract", is_flag=True, help="make classes abstract")
+@click.argument("tables", nargs=-1)
+def tosqla(
+    url: str | None,
+    base: str,
+    out: str | None,
+    abstract: bool,
+    tables: tuple[str],
+):
+    """Render tables into sqlalchemy.ext.declarative classes."""
+
+    from sqlalchemy import create_engine, MetaData, Table
+    from .mksqla import ModelMaker
+
+    urls = geturl(url)
+    ttables: list[Table] = []
+    for url in urls:
+        engine = create_engine(url)
+        meta = MetaData()
+        if tables:
+            meta.reflect(bind=engine, only=tables)
+        else:
+            meta.reflect(bind=engine)
+            tables = meta.tables.keys()
+
+        ttables.extend([meta.tables[t] for t in sorted(tables)])
+
+    with_tablename = not abstract
+    mm = ModelMaker(with_tablename=with_tablename, abstract=abstract)
+    with maybeclose(out) as fp:
+        mm.run_tables(
+            ttables,
+            base,
+            out=fp,
+        )
