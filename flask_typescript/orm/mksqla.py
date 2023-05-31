@@ -4,7 +4,9 @@ import re
 import sys
 from datetime import datetime
 from importlib.resources import read_text
+from typing import NamedTuple
 from typing import TextIO
+from typing import TypedDict
 
 from jinja2 import Template
 from sqlalchemy import BINARY
@@ -100,11 +102,49 @@ def get_template() -> str:
     return read_text("flask_typescript.orm", "template.py.jinja")
 
 
+class ColumnInfo(TypedDict):
+    name: str
+    type: str
+    python_type: str
+    otype: str
+    nullable: bool
+    pk: bool
+    server_default: str | None
+    index: bool | None
+    unique: bool
+    column_name: str
+    max_length: int | None
+
+
+class TableInfo(TypedDict):
+    model: str
+    name: str
+    columns: list[ColumnInfo]
+    charset: str
+    indexes: set[Index]
+    base: str
+    abstract: bool
+    with_tablename: bool
+
+
+class TableData(NamedTuple):
+    data: TableInfo
+    imports: set[str]
+    mysql: set[str]
+    pyimports: set[tuple[str, str]]
+
+
 class ModelMaker:
-    def __init__(self, with_tablename: bool = False, abstract: bool = False):
+    def __init__(
+        self,
+        with_tablename: bool = False,
+        abstract: bool = False,
+        base: str = "Base",
+    ):
         self.with_tablename = with_tablename
         self.abstract = abstract
         self.template = Template(get_template())
+        self.base = base
 
     def column_name(self, name: str) -> str:
         return column_name(name)
@@ -114,15 +154,16 @@ class ModelMaker:
         table: Table,
         enums: dict[frozenset[str], str],
         sets: dict[frozenset[str], str],
-    ):
+    ) -> TableData:
         mysql: set[str] = set()
         imports: set[str] = set()
         pyimports: set[tuple[str, str]] = set()
 
-        columns = []
+        columns: list[ColumnInfo] = []
 
         indexes = table.indexes
         atyp: str
+        charset: str
 
         do = table.dialect_options.get("mysql")
         if do:
@@ -132,7 +173,7 @@ class ModelMaker:
         for c in table.columns:
             typ = c.type
             atyp = str(typ)
-            pytype = None
+            pytype = "str"
             server_default = None
             if isinstance(typ, DOUBLE):
                 atyp = "DOUBLE"
@@ -241,21 +282,23 @@ class ModelMaker:
                 raise RuntimeError(f'unknown field "{table.name}.{c.name}" {c.type}')
             if c.nullable:
                 pytype = f"{pytype} | None"
-            d = dict(
+            d = ColumnInfo(
                 name=c.name,
                 type=atyp,
                 python_type=pytype,
                 otype=c.type.__class__.__name__,
-                nullable=c.nullable,
+                nullable=c.nullable or False,
                 pk=c.primary_key,
                 server_default=server_default,
+                index=c.index,
+                unique=c.unique or False,
+                column_name=self.column_name(c.name),
+                max_length=None,
             )
-            d["index"] = c.index
-            d["unique"] = c.unique
-            d["column_name"] = self.column_name(c.name)
             if hasattr(c.type, "length"):
                 d["max_length"] = c.type.length
             columns.append(d)
+
             for i in indexes:
                 if len(i.columns) == 1:
                     if c.name in i.columns:
@@ -270,21 +313,24 @@ class ModelMaker:
         if indexes:
             imports.add("Index")
 
-        data = dict(
+        data = TableInfo(
             model=self.pascal_case(table.name),
             name=table.name,
             columns=columns,
             charset=charset,
             indexes=indexes,
+            base=self.base,
+            abstract=self.abstract,
+            with_tablename=self.with_tablename,
         )
 
-        return data, imports, mysql, pyimports
+        return TableData(data=data, imports=imports, mysql=mysql, pyimports=pyimports)
 
     def pascal_case(self, name: str) -> str:
         return pascal_case(name)
 
     def pyname(self, name: str) -> str:
-        name = name.replace(" ", "_")
+        name = name.replace(" ", "_").replace("-", "_")
         if name[0].isdigit():
             return Number[name[0]] + name[1:]
         return name
@@ -292,9 +338,8 @@ class ModelMaker:
     def run_tables(
         self,
         tables: list[Table],
-        base: str = "Base",
         out: TextIO = sys.stdout,
-    ):
+    ) -> None:
         mysql: set[str] = set()
         imports: set[str] = set()
         pyimports: set[tuple[str, str]] = set()
@@ -304,34 +349,28 @@ class ModelMaker:
         for table in tables:
             tsets = sets.copy()
             tenums = enums.copy()
-            data, i, m, p = self.convert_table(table, enums, sets)
-            imports |= i
-            mysql |= m
-            pyimports |= p
+            tabledata = self.convert_table(table, enums, sets)
+            imports |= tabledata.imports
+            mysql |= tabledata.mysql
+            pyimports |= tabledata.pyimports
+            data = tabledata.data
 
-            data["enums"] = [
-                ([[v, self.pyname(v)] for v in k], enums[k])
+            xenums = [
+                ([(v, self.pyname(v)) for v in k], enums[k])
                 for k in set(enums.keys()) - set(tenums.keys())
             ]
-            data["sets"] = [
+            xsets = [
                 ([f'"{v}"' for v in k], sets[k])
                 for k in set(sets.keys()) - set(tsets.keys())
             ]
 
-            data.update(
-                dict(
-                    base=base,
-                    abstract=self.abstract,
-                    wt=self.with_tablename,
-                ),
-            )
-            txt = self.render_table(data)
+            txt = self.render_table(sets=xsets, enums=xenums, **data)
 
             ret.append(txt)
 
-        self.gen_tables(tables, ret, imports, mysql, pyimports, out=out, base=base)
+        self.gen_tables(tables, ret, imports, mysql, pyimports, out=out, base=self.base)
 
-    def render_table(self, data):
+    def render_table(self, **data):
         txt = self.template.render(**data)
         return txt
 

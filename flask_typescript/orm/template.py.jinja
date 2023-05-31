@@ -15,7 +15,7 @@ class {{name}}(PyEnum):
 # original name {{name}}
 class {{model}}{% if not abstract %}({{base}}){% endif %}:
     {% if abstract %}__abstract__ = True{% endif %}
-    {% if wt %}__tablename__ = "{{name}}"{% endif %}
+    {% if with_tablename %}__tablename__ = "{{name}}"{% endif %}
 {% for c in columns %}
     {% if c.column_name != c.name -%}
     {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column("{{c.name}}", {{c.type}}

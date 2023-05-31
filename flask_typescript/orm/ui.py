@@ -124,10 +124,9 @@ def tosqla(
         ttables.extend([meta.tables[t] for t in sorted(tables)])
 
     with_tablename = not abstract
-    mm = ModelMaker(with_tablename=with_tablename, abstract=abstract)
+    mm = ModelMaker(with_tablename=with_tablename, abstract=abstract, base=base)
     with maybeclose(out) as fp:
         mm.run_tables(
             ttables,
-            base,
             out=fp,
         )
