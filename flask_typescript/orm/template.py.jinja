@@ -2,8 +2,8 @@
 
 {%- for enums, name in enums %}
 class {{name}}(PyEnum):
-{% for n in enums %}
-    {{n|replace(' ','_')}} = "{{n}}"
+{% for n,pyname in enums %}
+    {{pyname}} = "{{n}}"
 {%- endfor %}
 
 {% endfor %}

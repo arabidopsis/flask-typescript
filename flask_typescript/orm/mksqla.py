@@ -28,7 +28,7 @@ from sqlalchemy.dialects.mysql import LONGBLOB
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.dialects.mysql import MEDIUMBLOB
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
-from sqlalchemy.dialects.mysql import SET as Set
+from sqlalchemy.dialects.mysql import SET
 from sqlalchemy.dialects.mysql import TEXT
 from sqlalchemy.dialects.mysql import TINYTEXT
 from sqlalchemy.dialects.mysql import YEAR
@@ -170,8 +170,8 @@ class ModelMaker:
                 pytype = "date"
                 imports.add(atyp)
                 pyimports.add(("datetime", "date"))
-            elif isinstance(typ, Set):
-                s = frozenset([f'"{v}"' for v in typ.values])
+            elif isinstance(typ, SET):
+                s = frozenset(typ.values)
                 if s not in sets:
                     sets[s] = "Set_" + c.name
                 atyp = sets[s]
@@ -283,6 +283,12 @@ class ModelMaker:
     def pascal_case(self, name: str) -> str:
         return pascal_case(name)
 
+    def pyname(self, name: str) -> str:
+        name = name.replace(" ", "_")
+        if name[0].isdigit():
+            return Number[name[0]] + name[1:]
+        return name
+
     def run_tables(
         self,
         tables: list[Table],
@@ -297,16 +303,20 @@ class ModelMaker:
         enums: dict[frozenset[str], str] = {}
         for table in tables:
             tsets = sets.copy()
-            tenums = sets.copy()
+            tenums = enums.copy()
             data, i, m, p = self.convert_table(table, enums, sets)
             imports |= i
             mysql |= m
             pyimports |= p
 
             data["enums"] = [
-                (k, enums[k]) for k in set(enums.keys()) - set(tenums.keys())
+                ([[v, self.pyname(v)] for v in k], enums[k])
+                for k in set(enums.keys()) - set(tenums.keys())
             ]
-            data["sets"] = [(k, sets[k]) for k in set(sets.keys()) - set(tsets.keys())]
+            data["sets"] = [
+                ([f'"{v}"' for v in k], sets[k])
+                for k in set(sets.keys()) - set(tsets.keys())
+            ]
 
             data.update(
                 dict(
