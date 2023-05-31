@@ -40,19 +40,18 @@ from sqlalchemy.dialects.mysql import YEAR
 
 PREAMBLE = Template(
     """
-{%- if mysql | length > 0 %}
-from sqlalchemy.dialects.mysql import {% for name in mysql -%}
-{{name}}{% if not loop.last %}, {%endif%}
+{% for mod, name in pyimports %}
+from {{mod}} import {{name}}
 {%- endfor %}
-{% endif %}
+{% for name in imports %}
+from sqlalchemy import {{name}}
+{%- endfor %}
+{% for mod, name in mysqlimports %}
+from {{mod}} import {{name}}
+{%- endfor %}
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-{% for mod, name in pyimports -%}
-from {{mod}} import {{name}}
-{% endfor %}
-from sqlalchemy import {% for name in imports -%}
-{{name}}{% if not loop.last %}, {%endif%}
-{%- endfor %}
+
 {% if not abstract %}
 from sqlalchemy.orm import DeclarativeBase
 
@@ -132,8 +131,22 @@ class TableInfo(TypedDict):
 class TableData(NamedTuple):
     data: TableInfo
     imports: set[str]
-    mysql: set[str]
+    mysqlimports: set[tuple[str, str]]
     pyimports: set[tuple[str, str]]
+
+
+def quote(s: str) -> str:
+    for q in ['"', "'"]:
+        if s.startswith(q) and s.endswith(q):
+            return s
+    return f'"{s}"'
+
+
+def clean(s: str) -> str:
+    return re.sub(r"\W|^(?=\d)", "_", s)
+
+
+NS = {"+": "watson", "-": "crick"}
 
 
 class ModelMaker:
@@ -142,11 +155,13 @@ class ModelMaker:
         with_tablename: bool = False,
         abstract: bool = False,
         base: str = "Base",
+        ns: dict[str, str] | None = NS,
     ):
         self.with_tablename = with_tablename
         self.abstract = abstract
         self.template = Template(get_template())
         self.base = base
+        self.ns = ns
 
     def column_name(self, name: str) -> str:
         return column_name(name)
@@ -157,7 +172,7 @@ class ModelMaker:
         enums: dict[frozenset[str], str],
         sets: dict[frozenset[str], str],
     ) -> TableData:
-        mysql: set[str] = set()
+        mysqlimports: set[tuple[str, str]] = set()
         imports: set[str] = set()
         pyimports: set[tuple[str, str]] = set()
 
@@ -177,6 +192,13 @@ class ModelMaker:
             atyp = str(typ)
             pytype = "str"
             server_default = None
+            if c.server_default is not None:
+                if hasattr(c.server_default, "arg"):
+                    # e.g. text("0")
+                    server_default = quote(str(c.server_default.arg))
+                    server_default = f"text({server_default})"
+                    imports.add("text")
+
             if isinstance(typ, DOUBLE):
                 atyp = "DOUBLE"
                 pytype = "float"
@@ -196,20 +218,18 @@ class ModelMaker:
                 pyimports.add(("decimal", "Decimal"))
             elif isinstance(typ, TIMESTAMP):
                 atyp = "TIMESTAMP"
-                server_default = 'text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")'
+                # server_default = 'text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")'
                 imports.add(atyp)
                 imports.add("text")
                 pytype = "datetime"
                 pyimports.add(("datetime", "datetime"))
             elif isinstance(typ, DateTime):
                 atyp = "DateTime"
-                # server_default = 'text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")'
                 imports.add(atyp)
                 pytype = "datetime"
                 pyimports.add(("datetime", "datetime"))
             elif isinstance(typ, Date):
                 atyp = "Date"
-                # server_default = 'text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")'
                 pytype = "date"
                 imports.add(atyp)
                 pyimports.add(("datetime", "date"))
@@ -218,7 +238,7 @@ class ModelMaker:
                 if s not in sets:
                     sets[s] = "Set_" + c.name
                 atyp = sets[s]
-                mysql.add("SET")
+                mysqlimports.add(("sqlalchemy.dialects.mysql", "SET"))
                 pytype = "set[str]"
             elif isinstance(typ, Enum):
                 s = frozenset(typ.enums)
@@ -244,7 +264,7 @@ class ModelMaker:
                         name = "Text"
                     atyp = f"{name}"
                 if name.startswith(("TINY", "LONG", "MEDIUM")) or name == "TEXT":
-                    mysql.add(name)
+                    mysqlimports.add(("sqlalchemy.dialects.mysql", name))
                 else:
                     imports.add(name)
 
@@ -253,7 +273,7 @@ class ModelMaker:
                 pytype = "str"
                 if hasattr(typ, "charset") and typ.charset and typ.charset != charset:
                     atyp = f'{name}({typ.length}, charset="{typ.charset}")'
-                    mysql.add(name)
+                    mysqlimports.add(("sqlalchemy.dialects.mysql", name))
                 else:
                     if name == "VARCHAR":
                         name = "String"
@@ -263,7 +283,7 @@ class ModelMaker:
                 name = typ.__class__.__name__
                 atyp = name
                 pytype = "bytes"
-                mysql.add(name)
+                mysqlimports.add(("sqlalchemy.dialects.mysql", name))
             elif isinstance(typ, (BINARY,)):
                 name = typ.__class__.__name__
                 atyp = f"{name}({typ.length})"
@@ -326,15 +346,25 @@ class ModelMaker:
             with_tablename=self.with_tablename,
         )
 
-        return TableData(data=data, imports=imports, mysql=mysql, pyimports=pyimports)
+        return TableData(
+            data=data,
+            imports=imports,
+            mysqlimports=mysqlimports,
+            pyimports=pyimports,
+        )
 
     def pascal_case(self, name: str) -> str:
         return pascal_case(name)
 
     def pyname(self, name: str) -> str:
-        name = name.replace(" ", "_").replace("-", "_")
+        name = name.strip()
+        if self.ns and name in self.ns:
+            return self.ns[name]
+        if name.isidentifier():
+            return name
         if name[0].isdigit():
-            return Number[name[0]] + name[1:]
+            name = Number[name[0]] + name[1:]
+        name = clean(name)
         return name
 
     def run_tables(
@@ -342,7 +372,7 @@ class ModelMaker:
         tables: list[Table],
         out: TextIO = sys.stdout,
     ) -> None:
-        mysql: set[str] = set()
+        mysqlimports: set[tuple[str, str]] = set()
         imports: set[str] = set()
         pyimports: set[tuple[str, str]] = set()
         ret: list[str] = []
@@ -353,7 +383,7 @@ class ModelMaker:
             tenums = enums.copy()
             tabledata = self.convert_table(table, enums, sets)
             imports |= tabledata.imports
-            mysql |= tabledata.mysql
+            mysqlimports |= tabledata.mysqlimports
             pyimports |= tabledata.pyimports
             data = tabledata.data
 
@@ -370,11 +400,18 @@ class ModelMaker:
 
             ret.append(txt)
 
-        self.gen_tables(tables, ret, imports, mysql, pyimports, out=out, base=self.base)
+        self.gen_tables(
+            tables,
+            ret,
+            imports,
+            mysqlimports,
+            pyimports,
+            out=out,
+            base=self.base,
+        )
 
     def render_table(self, **data) -> str:
-        txt = self.template.render(**data)
-        return txt
+        return self.template.render(**data)
 
     # pylint: disable=too-many-arguments
     def gen_tables(
@@ -382,7 +419,7 @@ class ModelMaker:
         tables: list[Table],
         models: list[str],
         imports: set[str],
-        mysql: set[str],
+        mysqlimports: set[tuple[str, str]],
         pyimports: set[tuple[str, str]],
         out: TextIO = sys.stdout,
         base: str = "Base",
@@ -391,7 +428,7 @@ class ModelMaker:
         print(
             PREAMBLE.render(
                 imports=imports,
-                mysql=mysql,
+                mysqlimports=mysqlimports,
                 base=base,
                 pyimports=pyimports,
                 abstract=self.abstract,
