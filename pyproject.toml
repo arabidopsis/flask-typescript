@@ -6,7 +6,7 @@ authors = ["arabidopsis <ian.castleden@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "flask_typescript"}]
-include = ["flask_typescript/preamble.ts"]
+include = ["flask_typescript/preamble.ts", "flask_typescript/orm/template.py.jinja"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
