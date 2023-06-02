@@ -111,8 +111,8 @@ class ColumnInfo(TypedDict):
 
 
 class TableInfo(TypedDict):
-    model: str
-    name: str
+    model: str  # python class name
+    tablename: str  # sql table name
     columns: list[ColumnInfo]
     charset: str | None
     indexes: set[Index]
@@ -358,7 +358,7 @@ class ModelMaker:
 
         return TableInfo(
             model=self.pascal_case(table.name),
-            name=table.name,
+            tablename=table.name,
             columns=columns,
             charset=charset,
             indexes=indexes,

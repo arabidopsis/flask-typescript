@@ -19,7 +19,7 @@ Literal_{{name}} = Literal[{% for n in values -%}
 # original name {%if schema %}{{schema}}.{% endif %}{{name}}
 class {{model}}{% if not abstract %}({{base}}){% endif %}:
     {% if abstract %}__abstract__ = True{% endif -%}
-    {% if with_tablename %}__tablename__ = "{{name}}"{% endif %}
+    {% if with_tablename %}__tablename__ = "{{tablename}}"{% endif %}
 {% for c in columns %}
     {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column({% if c.column_name != c.name -%}"{{c.name}}", {% endif %}{{c.type}}
         {%- if not c.nullable %}, nullable=False{% endif %}
