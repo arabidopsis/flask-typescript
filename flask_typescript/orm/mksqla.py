@@ -34,20 +34,11 @@ class {{base}}(DeclarativeBase):
 )
 
 
-def pascal_case(name: str) -> str:
-    name = "".join(n[0].upper() + n[1:] for n in name.split("_"))
-    if name.endswith("s"):
-        name = name[:-1]
-    name = name.replace(".", "_")
-    if name in {"Column", "Table", "Integer"}:
-        name = name + "Class"
-    return name
+NUMBER = re.compile(r"^\d+(\.\d*)?$")
 
 
 NAMES = {"class": "class_"}
 
-
-CNAMES = re.compile("[_ -()/]+")
 
 Number = {
     "1": "one",
@@ -62,13 +53,44 @@ Number = {
     "0": "zero",
 }
 
+NS = {"+": "watson", "-": "crick"}
 
-def column_name(name: str) -> str:
-    cname = CNAMES.sub("_", name)
-    cname = NAMES.get(cname, cname)
-    if cname[0] in Number:
-        cname = Number[cname[0]] + cname[1:]
-    return cname
+
+SQLA = "sqlalchemy"
+MYSQL = "sqlalchemy.dialects.mysql"
+POSTGRES = "sqlalchemy.dialects.postgresql"
+
+
+def pascal_case(name: str) -> str:
+    name = "".join(n[0].upper() + n[1:] for n in name.split("_"))
+    if name.endswith("s"):
+        name = name[:-1]
+    name = name.replace(".", "_")
+    if name in {"Column", "Table", "Integer"}:
+        name = name + "Class"
+    return name
+
+
+def pyname(name: str) -> str:
+    name = name.strip()
+    if name.isidentifier():
+        return name
+    if name[0].isdigit():
+        name = Number[name[0]] + name[1:]
+    name = clean(name)
+    return name
+
+
+def quote(s: str) -> str:
+    for q in ['"', "'"]:
+        if s.startswith(q) and s.endswith(q):
+            if NUMBER.match(s[1:-1]):
+                return s
+    return f'"{s}"'
+
+
+def clean(s: str) -> str:
+    return re.sub(r"\W|^(?=\d)", "_", s)
 
 
 def get_template() -> str:
@@ -97,29 +119,6 @@ class TableInfo(TypedDict):
     indexes: set[Index]
 
 
-NUMBER = re.compile(r"^\d+(\.\d*)?$")
-
-
-def quote(s: str) -> str:
-    for q in ['"', "'"]:
-        if s.startswith(q) and s.endswith(q):
-            if NUMBER.match(s[1:-1]):
-                return s
-    return f'"{s}"'
-
-
-def clean(s: str) -> str:
-    return re.sub(r"\W|^(?=\d)", "_", s)
-
-
-NS = {"+": "watson", "-": "crick"}
-
-
-SQLA = "sqlalchemy"
-MYSQL = "sqlalchemy.dialects.mysql"
-POSTGRES = "sqlalchemy.dialects.postgresql"
-
-
 class ModelMaker:
     def __init__(
         self,
@@ -135,9 +134,6 @@ class ModelMaker:
         self.base = base
         self.ns = ns
         self.throw = throw
-
-    def column_name(self, name: str) -> str:
-        return column_name(name)
 
     def convert_table(  # noqa: C901
         self,
@@ -172,12 +168,10 @@ class ModelMaker:
                     server_default = f"text({server_default})"
                     pyimports.add((SQLA, "text"))
 
-            if isinstance(typ, (sqla.DOUBLE_PRECISION, mysql.DOUBLE)):
+            if isinstance(typ, (sqla.Double, sqla.DOUBLE_PRECISION, mysql.DOUBLE)):
                 pytype = "float"
-                if name == "DOUBLE":
-                    pyimports.add((MYSQL, name))
-                else:
-                    pyimports.add((SQLA, name))
+                sqlatype = "Double"
+                pyimports.add((SQLA, "Double"))
             elif isinstance(typ, (sqla.Boolean, sqla.BOOLEAN)):
                 if name == "BOOLEAN":
                     name = "Boolean"
@@ -378,7 +372,7 @@ class ModelMaker:
             (sqla.Integer, sqla.BigInteger, sqla.SmallInteger, sqla.INTEGER),
         ):
             return "int"
-        if isinstance(typ.item_type, (sqla.Float, sqla.DOUBLE_PRECISION)):
+        if isinstance(typ.item_type, (sqla.Float, sqla.DOUBLE_PRECISION, sqla.Double)):
             return "float"
         return "str"
 
@@ -387,6 +381,7 @@ class ModelMaker:
             raise RuntimeError(
                 f'unknown field "{col.table.name}.{col.name}" {col.type}',
             )
+        # make a guess and set python type to 'Any'
         name = col.type.__class__.__name__
         module = col.type.__class__.__module__
         sqlatype = name
@@ -396,24 +391,21 @@ class ModelMaker:
         return sqlatype, pytype
 
     def get_enum_name(self, col: Column) -> str:
-        return f"Enum_{col.name}"
+        return f"Enum_{col.key}"
 
     def get_set_name(self, col: Column) -> str:
-        return f"Set_{col.name}"
+        return f"Set_{col.key}"
 
     def pascal_case(self, name: str) -> str:
         return pascal_case(self.pyname(name))
 
+    def column_name(self, name: str) -> str:
+        return self.pyname(name)
+
     def pyname(self, name: str) -> str:
-        name = name.strip()
         if self.ns and name in self.ns:
             return self.ns[name]
-        if name.isidentifier():
-            return name
-        if name[0].isdigit():
-            name = Number[name[0]] + name[1:]
-        name = clean(name)
-        return name
+        return pyname(name)
 
     def __call__(self, tables: list[Table], out: TextIO = sys.stdout) -> None:
         return self.run_tables(tables, out)
