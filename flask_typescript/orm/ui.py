@@ -96,6 +96,12 @@ def models(modules: tuple[str], out: str | None):
     help="sqlalchemy connection url to use",
 )
 @click.option("--base", default="Base", help="base class of models")
+@click.option("--schema", help="schema to use")
+@click.option(
+    "--throw",
+    is_flag=True,
+    help="throw on unknown column type (instead of just guessing)",
+)
 @click.option("--abstract", is_flag=True, help="make classes abstract")
 @click.argument("tables", nargs=-1)
 def tosqla(
@@ -103,7 +109,9 @@ def tosqla(
     base: str,
     out: str | None,
     abstract: bool,
+    schema: str | None,
     tables: tuple[str],
+    throw: bool,
 ):
     """Render tables into sqlalchemy.ext.declarative classes."""
 
@@ -112,21 +120,24 @@ def tosqla(
 
     urls = geturl(url)
     ttables: list[Table] = []
+    uout = []
     for url in urls:
         engine = create_engine(url)
+        uout.append(str(engine.url))  # hide password
         meta = MetaData()
         if tables:
-            meta.reflect(bind=engine, only=tables)
+            meta.reflect(bind=engine, only=tables, schema=schema)
         else:
-            meta.reflect(bind=engine)
+            meta.reflect(bind=engine, schema=schema)
             tables = meta.tables.keys()
 
         ttables.extend([meta.tables[t] for t in sorted(tables)])
-
-    with_tablename = not abstract
-    mm = ModelMaker(with_tablename=with_tablename, abstract=abstract, base=base)
+    mm = ModelMaker(
+        with_tablename=not abstract,
+        abstract=abstract,
+        base=base,
+        throw=throw,
+    )
     with maybeclose(out) as fp:
-        mm.run_tables(
-            ttables,
-            out=fp,
-        )
+        print(f'# from {", ".join(uout)}', file=fp)
+        mm(ttables, out=fp)

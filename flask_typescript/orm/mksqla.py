@@ -5,52 +5,24 @@ import sys
 from datetime import datetime
 from importlib.resources import read_text
 from typing import Any
-from typing import NamedTuple
 from typing import TextIO
 from typing import TypedDict
 
+import sqlalchemy as sqla
 from jinja2 import Template
-from sqlalchemy import BINARY
-from sqlalchemy import BLOB
-from sqlalchemy import CHAR
 from sqlalchemy import Column
-from sqlalchemy import Date
-from sqlalchemy import DateTime
-from sqlalchemy import DECIMAL
-from sqlalchemy import Enum
-from sqlalchemy import Float
 from sqlalchemy import Index
-from sqlalchemy import Integer
-from sqlalchemy import JSON
 from sqlalchemy import MetaData
-from sqlalchemy import String
 from sqlalchemy import Table
-from sqlalchemy import Text
-from sqlalchemy import TIMESTAMP
-from sqlalchemy.dialects.mysql import DOUBLE
-from sqlalchemy.dialects.mysql import LONGBLOB
-from sqlalchemy.dialects.mysql import LONGTEXT
-from sqlalchemy.dialects.mysql import MEDIUMBLOB
-from sqlalchemy.dialects.mysql import MEDIUMTEXT
-from sqlalchemy.dialects.mysql import SET
-from sqlalchemy.dialects.mysql import TEXT
-from sqlalchemy.dialects.mysql import TINYTEXT
-from sqlalchemy.dialects.mysql import YEAR
+from sqlalchemy.dialects import mysql
+from sqlalchemy.dialects import postgresql
 
 
 PREAMBLE = Template(
-    """
+    """from __future__ import annotations
 {% for mod, name in pyimports %}
 from {{mod}} import {{name}}
 {%- endfor %}
-{% for name in imports %}
-from sqlalchemy import {{name}}
-{%- endfor %}
-{% for mod, name in mysqlimports %}
-from {{mod}} import {{name}}
-{%- endfor %}
-from sqlalchemy.orm import Mapped
-from sqlalchemy.orm import mapped_column
 
 {% if not abstract %}
 from sqlalchemy.orm import DeclarativeBase
@@ -121,24 +93,18 @@ class TableInfo(TypedDict):
     model: str
     name: str
     columns: list[ColumnInfo]
-    charset: str
+    charset: str | None
     indexes: set[Index]
-    base: str
-    abstract: bool
-    with_tablename: bool
 
 
-class TableData(NamedTuple):
-    data: TableInfo
-    imports: set[str]
-    mysqlimports: set[tuple[str, str]]
-    pyimports: set[tuple[str, str]]
+NUMBER = re.compile(r"^\d+(\.\d*)?$")
 
 
 def quote(s: str) -> str:
     for q in ['"', "'"]:
         if s.startswith(q) and s.endswith(q):
-            return s
+            if NUMBER.match(s[1:-1]):
+                return s
     return f'"{s}"'
 
 
@@ -149,11 +115,17 @@ def clean(s: str) -> str:
 NS = {"+": "watson", "-": "crick"}
 
 
+SQLA = "sqlalchemy"
+MYSQL = "sqlalchemy.dialects.mysql"
+POSTGRES = "sqlalchemy.dialects.postgresql"
+
+
 class ModelMaker:
     def __init__(
         self,
         with_tablename: bool = False,
         abstract: bool = False,
+        throw: bool = False,
         base: str = "Base",
         ns: dict[str, str] | None = NS,
     ):
@@ -162,6 +134,7 @@ class ModelMaker:
         self.template = Template(get_template())
         self.base = base
         self.ns = ns
+        self.throw = throw
 
     def column_name(self, name: str) -> str:
         return column_name(name)
@@ -169,144 +142,200 @@ class ModelMaker:
     def convert_table(  # noqa: C901
         self,
         table: Table,
-        enums: dict[frozenset[str], str],
-        sets: dict[frozenset[str], str],
-    ) -> TableData:
-        mysqlimports: set[tuple[str, str]] = set()
-        imports: set[str] = set()
-        pyimports: set[tuple[str, str]] = set()
-
+        enums: dict[tuple[str, ...], str],
+        sets: dict[tuple[str, ...], str],
+        pyimports: set[tuple[str, str]],
+    ) -> TableInfo:
         columns: list[ColumnInfo] = []
 
         indexes = table.indexes
-        atyp: str
-        charset: str
+        sqlatype: str
+        charset: str | None
 
         do = table.dialect_options.get("mysql")
         if do:
             charset = do["default charset"]
         else:
-            charset = ""
+            charset = None
+
         for c in table.columns:
             typ = c.type
-            atyp = str(typ)
-            pytype = "str"
+            name = typ.__class__.__name__
+            sqlatype = name
+            pytype = "Any"
             server_default = None
+
             if c.server_default is not None:
                 if hasattr(c.server_default, "arg"):
                     # e.g. text("0")
                     server_default = quote(str(c.server_default.arg))
                     server_default = f"text({server_default})"
-                    imports.add("text")
+                    pyimports.add((SQLA, "text"))
 
-            if isinstance(typ, DOUBLE):
-                atyp = "DOUBLE"
+            if isinstance(typ, (sqla.DOUBLE_PRECISION, mysql.DOUBLE)):
                 pytype = "float"
-                imports.add(atyp)
-            elif isinstance(typ, Float):
-                atyp = "Float"
+                if name == "DOUBLE":
+                    pyimports.add((MYSQL, name))
+                else:
+                    pyimports.add((SQLA, name))
+            elif isinstance(typ, (sqla.Boolean, sqla.BOOLEAN)):
+                if name == "BOOLEAN":
+                    name = "Boolean"
+                    sqlatype = name
+                pytype = "bool"
+                pyimports.add((SQLA, name))
+            elif isinstance(typ, (sqla.Float, sqla.REAL)):
+                if name == "REAL":
+                    name = "Float"
+                    sqlatype = name
                 pytype = "float"
-                imports.add(atyp)
-            elif isinstance(typ, Integer):
-                atyp = "Integer"
-                imports.add(atyp)
+                pyimports.add((SQLA, name))
+            elif isinstance(
+                typ,
+                (
+                    sqla.Integer,
+                    sqla.BigInteger,
+                    sqla.SmallInteger,
+                    sqla.INTEGER,
+                    mysql.TINYINT,
+                ),
+            ):
+                if name == "INTEGER":
+                    name = "Integer"
+                elif name == "BIGINT":
+                    name = "BigInteger"
+                elif name == "SMALLINT":
+                    name = "SmallInteger"
+                elif name == "TINYINT":
+                    name = "Boolean"
                 pytype = "int"
-            elif isinstance(typ, DECIMAL):
-                atyp = f"DECIMAL({typ.precision},{typ.scale})"
-                imports.add("DECIMAL")
+                sqlatype = name
+                pyimports.add((SQLA, name))
+            elif isinstance(typ, sqla.DECIMAL):
+                sqlatype = f"DECIMAL({typ.precision},{typ.scale})"
                 pytype = "Decimal"
+                pyimports.add((SQLA, "DECIMAL"))
                 pyimports.add(("decimal", "Decimal"))
-            elif isinstance(typ, TIMESTAMP):
-                atyp = "TIMESTAMP"
-                # server_default = 'text("CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP")'
-                imports.add(atyp)
-                imports.add("text")
+            elif isinstance(typ, sqla.TIMESTAMP):
                 pytype = "datetime"
+                pyimports.add((SQLA, name))
                 pyimports.add(("datetime", "datetime"))
-            elif isinstance(typ, DateTime):
-                atyp = "DateTime"
-                imports.add(atyp)
+            elif isinstance(typ, sqla.DateTime):
                 pytype = "datetime"
+                pyimports.add((SQLA, name))
                 pyimports.add(("datetime", "datetime"))
-            elif isinstance(typ, Date):
-                atyp = "Date"
+            elif isinstance(typ, sqla.Date):
                 pytype = "date"
-                imports.add(atyp)
+                pyimports.add((SQLA, name))
                 pyimports.add(("datetime", "date"))
-            elif isinstance(typ, SET):
-                s = frozenset(typ.values)
+            elif isinstance(typ, mysql.SET):
+                s = tuple(typ.values)
                 if s not in sets:
-                    sets[s] = "Set_" + c.name
-                atyp = sets[s]
-                mysqlimports.add(("sqlalchemy.dialects.mysql", "SET"))
+                    sets[s] = self.get_set_name(c)
+                sqlatype = sets[s]
                 pytype = "set[str]"
-            elif isinstance(typ, Enum):
-                s = frozenset(typ.enums)
+                pyimports.add((MYSQL, "SET"))
+            elif isinstance(typ, sqla.Enum):
+                s = tuple(typ.enums)
                 if s not in enums:
-                    enums[s] = "Enum_" + c.name
-                atyp = enums[s]
-                imports.add("Enum")
+                    enums[s] = self.get_enum_name(c)
+                sqlatype = enums[s]
+                pytype = sqlatype
+                sqlatype = f"Enum({sqlatype})"
+                pyimports.add((SQLA, "Enum"))
                 pyimports.add(("enum", "Enum as PyEnum"))
-                pytype = atyp
-                atyp = f"Enum({atyp})"
-            elif isinstance(typ, (Text, TEXT, MEDIUMTEXT, TINYTEXT, LONGTEXT)):
-                name = typ.__class__.__name__
+            elif isinstance(
+                typ,
+                (
+                    sqla.Text,
+                    mysql.TEXT,
+                    mysql.MEDIUMTEXT,
+                    mysql.TINYTEXT,
+                    mysql.LONGTEXT,
+                ),
+            ):
                 usecharset = False
                 pytype = "str"
                 if hasattr(typ, "charset") and typ.charset:
                     if typ.charset != charset:
                         usecharset = True
-                        atyp = f'{name}(charset="{typ.charset}")'
+                        sqlatype = f'{name}(charset="{typ.charset}")'
                     else:
-                        atyp = f"{name}"
+                        sqlatype = f"{name}"
                 else:
                     if name == "TEXT" and not usecharset:
                         name = "Text"
-                    atyp = f"{name}"
+                    sqlatype = f"{name}"
                 if name.startswith(("TINY", "LONG", "MEDIUM")) or name == "TEXT":
-                    mysqlimports.add(("sqlalchemy.dialects.mysql", name))
+                    pyimports.add((MYSQL, name))
                 else:
-                    imports.add(name)
+                    pyimports.add((SQLA, name))
 
-            elif isinstance(typ, (String, CHAR)):
-                name = typ.__class__.__name__
+            elif isinstance(typ, (sqla.String, sqla.CHAR)):
                 pytype = "str"
                 if hasattr(typ, "charset") and typ.charset and typ.charset != charset:
-                    atyp = f'{name}({typ.length}, charset="{typ.charset}")'
-                    mysqlimports.add(("sqlalchemy.dialects.mysql", name))
+                    sqlatype = f'{name}({typ.length}, charset="{typ.charset}")'
+                    pyimports.add((MYSQL, name))
                 else:
                     if name == "VARCHAR":
                         name = "String"
-                    atyp = f"{name}({typ.length})"
-                    imports.add(name)
-            elif isinstance(typ, (BLOB, LONGBLOB, MEDIUMBLOB)):
-                name = typ.__class__.__name__
-                atyp = name
+                    sqlatype = f"{name}({typ.length})"
+                    pyimports.add((SQLA, name))
+            elif isinstance(typ, (sqla.BLOB, mysql.LONGBLOB, mysql.MEDIUMBLOB)):
                 pytype = "bytes"
-                mysqlimports.add(("sqlalchemy.dialects.mysql", name))
-            elif isinstance(typ, (BINARY,)):
-                name = typ.__class__.__name__
-                atyp = f"{name}({typ.length})"
-                imports.add(name)
-            elif isinstance(typ, (JSON)):
-                name = typ.__class__.__name__
-                atyp = name
+                if name == "BLOB":
+                    pyimports.add((SQLA, name))
+                else:
+                    pyimports.add((MYSQL, name))
+            elif isinstance(typ, (sqla.BINARY,)):
+                sqlatype = f"{name}({typ.length})"
+                pytype = "bytes"
+                pyimports.add((SQLA, name))
+            elif isinstance(typ, (sqla.JSON, postgresql.JSONB)):
                 pytype = "Any"
-                imports.add(name)
+                if name == "JSON":
+                    pyimports.add((SQLA, name))
+                else:
+                    pyimports.add((POSTGRES, name))
                 pyimports.add(("typing", "Any"))
-            elif isinstance(typ, YEAR):
-                name = typ.__class__.__name__
-                atyp = atyp = f"{name}(4)"
-                imports.add(name)
+            elif isinstance(typ, mysql.YEAR):
+                sqlatype = f"{name}(4)"
                 pytype = "int"
+                pyimports.add((MYSQL, name))
+            elif isinstance(typ, sqla.ARRAY):
+                item_type = typ.item_type.__class__.__name__
+                dimensions = typ.dimensions or 1
+                sqlatype = f"ARRAY({item_type}, dimensions={dimensions})"
+                # TODO other array types?
+                py_item_type = self.get_item_type(typ)
+                pytype = f"list[{py_item_type}]"
+                for _ in range(1, dimensions):
+                    pytype = f"list[{pytype}]"
+                pyimports.add((SQLA, "ARRAY"))
+                pyimports.add((SQLA, item_type))
+            elif isinstance(typ, postgresql.BYTEA):
+                if typ.length:
+                    sqlatype = f"{sqlatype}(length={typ.length})"
+                pytype = "bytes"
+                pyimports.add((POSTGRES, name))
+            elif isinstance(typ, postgresql.HSTORE):
+                pytype = "dict[str,str]"
+                pyimports.add((POSTGRES, name))
+            elif isinstance(typ, (mysql.BIT, postgresql.BIT)):
+                if typ.length:
+                    sqlatype = f"{sqlatype}(length={typ.length})"
+                pytype = "bytes"
+                pyimports.add((typ.__module__, name))
 
             else:
-                raise RuntimeError(f'unknown field "{table.name}.{c.name}" {c.type}')
+                sqlatype, pytype = self.other(c, pyimports)
+
             if c.nullable:
                 pytype = f"{pytype} | None"
+
             d = ColumnInfo(
                 name=c.name,
-                type=atyp,
+                type=sqlatype,
                 python_type=pytype,
                 otype=c.type.__class__.__name__,
                 nullable=c.nullable or False,
@@ -328,33 +357,49 @@ class ModelMaker:
                         d["unique"] = i.unique
                         indexes.remove(i)
                         break
-        # for e, name in enums.items():
-        #     atyp = "Enum({})".format(", ".join('"%s"' % v for v in e))
-        #     elist.append((name, atyp))
 
         if indexes:
-            imports.add("Index")
+            pyimports.add((SQLA, "Index"))
 
-        data = TableInfo(
+        return TableInfo(
             model=self.pascal_case(table.name),
             name=table.name,
             columns=columns,
             charset=charset,
             indexes=indexes,
-            base=self.base,
-            abstract=self.abstract,
-            with_tablename=self.with_tablename,
         )
 
-        return TableData(
-            data=data,
-            imports=imports,
-            mysqlimports=mysqlimports,
-            pyimports=pyimports,
-        )
+    def get_item_type(self, typ: sqla.ARRAY) -> str:
+        if isinstance(
+            typ.item_type,
+            (sqla.Integer, sqla.BigInteger, sqla.SmallInteger, sqla.INTEGER),
+        ):
+            return "int"
+        if isinstance(typ.item_type, (sqla.Float, sqla.DOUBLE_PRECISION)):
+            return "float"
+        return "str"
+
+    def other(self, col: Column, pyimports: set[tuple[str, str]]) -> tuple[str, str]:
+        if self.throw:
+            raise RuntimeError(
+                f'unknown field "{col.table.name}.{col.name}" {col.type}',
+            )
+        name = col.type.__class__.__name__
+        module = col.type.__class__.__module__
+        sqlatype = name
+        pytype = "Any"
+        pyimports.add(("typing", "Any"))
+        pyimports.add((module, name))
+        return sqlatype, pytype
+
+    def get_enum_name(self, col: Column) -> str:
+        return f"Enum_{col.name}"
+
+    def get_set_name(self, col: Column) -> str:
+        return f"Set_{col.name}"
 
     def pascal_case(self, name: str) -> str:
-        return pascal_case(name)
+        return pascal_case(self.pyname(name))
 
     def pyname(self, name: str) -> str:
         name = name.strip()
@@ -367,44 +412,47 @@ class ModelMaker:
         name = clean(name)
         return name
 
+    def __call__(self, tables: list[Table], out: TextIO = sys.stdout) -> None:
+        return self.run_tables(tables, out)
+
     def run_tables(
         self,
         tables: list[Table],
         out: TextIO = sys.stdout,
     ) -> None:
-        mysqlimports: set[tuple[str, str]] = set()
-        imports: set[str] = set()
-        pyimports: set[tuple[str, str]] = set()
+        pyimports: set[tuple[str, str]] = {
+            ("sqlalchemy.orm", "Mapped"),
+            ("sqlalchemy.orm", "mapped_column"),
+        }
         ret: list[str] = []
-        sets: dict[frozenset[str], str] = {}
-        enums: dict[frozenset[str], str] = {}
+        sets: dict[tuple[str, ...], str] = {}
+        enums: dict[tuple[str, ...], str] = {}
         for table in tables:
             tsets = sets.copy()
             tenums = enums.copy()
-            tabledata = self.convert_table(table, enums, sets)
-            imports |= tabledata.imports
-            mysqlimports |= tabledata.mysqlimports
-            pyimports |= tabledata.pyimports
-            data = tabledata.data
+            data = self.convert_table(table, enums, sets, pyimports)
 
             xenums = [
-                ([(v, self.pyname(v)) for v in k], enums[k])
+                (enums[k], [(v, self.pyname(v)) for v in k])
                 for k in set(enums.keys()) - set(tenums.keys())
             ]
-            xsets = [
-                ([f'"{v}"' for v in k], sets[k])
-                for k in set(sets.keys()) - set(tsets.keys())
-            ]
+            xsets = [(sets[k], k) for k in set(sets.keys()) - set(tsets.keys())]
 
-            txt = self.render_table(sets=xsets, enums=xenums, **data)
+            txt = self.render_table(
+                sets=xsets,
+                enums=xenums,
+                base=self.base,
+                abstract=self.abstract,
+                schema=table.schema,
+                with_tablename=self.with_tablename,
+                **data,
+            )
 
             ret.append(txt)
 
-        self.gen_tables(
+        self.print_tables(
             tables,
             ret,
-            imports,
-            mysqlimports,
             pyimports,
             out=out,
             base=self.base,
@@ -413,31 +461,31 @@ class ModelMaker:
     def render_table(self, **data) -> str:
         return self.template.render(**data)
 
-    # pylint: disable=too-many-arguments
-    def gen_tables(
+    def print_tables(
         self,
         tables: list[Table],
         models: list[str],
-        imports: set[str],
-        mysqlimports: set[tuple[str, str]],
         pyimports: set[tuple[str, str]],
         out: TextIO = sys.stdout,
         base: str = "Base",
     ) -> None:
-        print(f"# generated by {__file__} on {datetime.now()}", file=out)
+        def key(p):
+            if p[0] in {"datetime", "enum", "typing"}:
+                return "aaaa" + p[0], p[1]
+            return p
+
+        print(f"# generated by flask_typescript on {datetime.now()}", file=out)
         print(
             PREAMBLE.render(
-                imports=imports,
-                mysqlimports=mysqlimports,
                 base=base,
-                pyimports=pyimports,
+                pyimports=sorted(pyimports, key=key),
                 abstract=self.abstract,
             ),
             file=out,
         )
-        for t in models:
+        for model in models:
             print(file=out)
-            print(t, file=out)
+            print(model, file=out)
 
     def mkcopy(
         self,
@@ -470,7 +518,7 @@ class ModelMaker:
         return Table(
             name,
             meta,
-            Column(pkname, Integer, primary_key=True),
+            Column(pkname, sqla.Integer, primary_key=True),
             *args,
             **table.kwargs,
         )

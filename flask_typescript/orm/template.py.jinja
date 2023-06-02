@@ -1,43 +1,36 @@
 
 
-{%- for enums, name in enums %}
+{%- for name, enums in enums %}
 class {{name}}(PyEnum):
-{% for n,pyname in enums %}
+{% for n, pyname in enums %}
     {{pyname}} = "{{n}}"
 {%- endfor %}
 
 {% endfor %}
 
-{%- for enums, name in sets %}
-{{name}} = SET({{enums|join(',')}})
+{%- for name,values in sets %}
+{{name}} = SET({% for n in values -%}
+"{{n}}"{%- if not loop.last%}, {% endif -%}
+{%- endfor %})
 {% endfor %}
 
-# original name {{name}}
+
+# original name {%if schema %}{{schema}}.{% endif %}{{name}}
 class {{model}}{% if not abstract %}({{base}}){% endif %}:
-    {% if abstract %}__abstract__ = True{% endif %}
+    {% if abstract %}__abstract__ = True{% endif -%}
     {% if with_tablename %}__tablename__ = "{{name}}"{% endif %}
 {% for c in columns %}
-    {% if c.column_name != c.name -%}
-    {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column("{{c.name}}", {{c.type}}
-                                {%- if not c.nullable %}, nullable=False{% endif %}
-                                {%- if c.index %}, index=True{%- endif %}
-                                {%- if c.unique %}, unique=True{% endif %}
-                                {%- if c.pk %}, primary_key=True{% endif %}
-                                {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
-    {%- else -%}
-    {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column({{c.type}}
-                                {%- if not c.nullable %}, nullable=False{% endif %}
-                                {%- if c.index %}, index=True{% endif %}
-                                {%- if c.unique %}, unique=True{% endif %}
-                                {%- if c.pk %}, primary_key=True{% endif %}
-                                {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
-    {%- endif %}
+    {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column({% if c.column_name != c.name -%}"{{c.name}}", {% endif %}{{c.type}}
+        {%- if not c.nullable %}, nullable=False{% endif %}
+        {%- if c.index %}, index=True{%- endif %}
+        {%- if c.unique %}, unique=True{% endif %}
+        {%- if c.pk %}, primary_key=True{% endif %}
+        {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
 {%- endfor %}
-
-    {% if indexes %}
+{% if indexes %}
     __table_args__ = (
-        {%- for c in indexes %}
-                    Index("{{ c.name }}",{% for col in c.columns %} "{{col.name}}",  {% endfor %} unique={{c.unique}}),
-        {%- endfor %}
-                        )
-    {% endif %}
+    {%- for c in indexes %}
+        Index("{{ c.name }}",{% for col in c.columns %} "{{col.name}}",  {% endfor %} unique={{c.unique}}),
+    {%- endfor %}
+    )
+{% endif %}
