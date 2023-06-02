@@ -16,7 +16,7 @@ Literal_{{name}} = Literal[{% for n in values -%}
 {% endfor %}
 
 
-# original name {%if schema %}{{schema}}.{% endif %}{{name}}
+# original name: {%if schema %}{{schema}}.{% endif %}{{tablename}}
 class {{model}}{% if not abstract %}({{base}}){% endif %}:
     {% if abstract %}__abstract__ = True{% endif -%}
     {% if with_tablename %}__tablename__ = "{{tablename}}"{% endif %}
