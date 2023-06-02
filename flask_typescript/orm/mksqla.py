@@ -233,8 +233,11 @@ class ModelMaker:
                 if s not in sets:
                     sets[s] = self.get_set_name(c)
                 sqlatype = sets[s]
-                pytype = "set[str]"
+                literal = f"Literal_{sqlatype}"
+                pytype = f"set[{literal}]"
                 pyimports.add((MYSQL, "SET"))
+                pyimports.add(("typing", "Literal"))
+                pyimports.add(("typing", "get_args"))
             elif isinstance(typ, sqla.Enum):
                 s = tuple(typ.enums)
                 if s not in enums:

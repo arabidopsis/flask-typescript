@@ -9,9 +9,10 @@ class {{name}}(PyEnum):
 {% endfor %}
 
 {%- for name,values in sets %}
-{{name}} = SET({% for n in values -%}
+Literal_{{name}} = Literal[{% for n in values -%}
 "{{n}}"{%- if not loop.last%}, {% endif -%}
-{%- endfor %})
+{%- endfor %}]
+{{name}} = SET(*get_args(Literal_{{name}}))
 {% endfor %}
 
 
