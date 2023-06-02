@@ -99,15 +99,14 @@ def get_template() -> str:
 
 class ColumnInfo(TypedDict):
     name: str
+    column_name: str
     type: str
     python_type: str
-    otype: str
     nullable: bool
     pk: bool
     server_default: str | None
     index: bool | None
     unique: bool
-    column_name: str
     max_length: int | None
 
 
@@ -334,7 +333,6 @@ class ModelMaker:
                 name=c.name,
                 type=sqlatype,
                 python_type=pytype,
-                otype=c.type.__class__.__name__,
                 nullable=c.nullable or False,
                 pk=c.primary_key,
                 server_default=server_default,
