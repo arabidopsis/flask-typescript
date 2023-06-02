@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import re
 from typing import Any
+from typing import cast
 from typing import TextIO
 from typing import TYPE_CHECKING
 
+from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Date
 from sqlalchemy import DateTime
@@ -15,6 +17,7 @@ from sqlalchemy import LargeBinary
 from sqlalchemy import MetaData
 from sqlalchemy import Numeric
 from sqlalchemy import String
+from sqlalchemy import Table
 from sqlalchemy import Text
 from sqlalchemy import TIMESTAMP
 from sqlalchemy.dialects.mysql import SET
@@ -78,27 +81,38 @@ def chop(s: str) -> str:
     return s
 
 
+def get_default(c: Column) -> Any:
+    default: Any = c.default
+    if callable(default):
+        default = default()
+    if default is None:
+        if c.server_default:
+            d = c.server_default
+            if hasattr(d, "arg"):
+                # e.g. text("0")
+                default = chop(str(d.arg))
+            else:
+                default = "$SERVER_DEFAULT$"
+    else:
+        default = str(default)
+    return default
+
+
+def jsname(name: str) -> str:
+    name = CLEAN.sub("", name).replace(" ", "_")
+    if name[0].isdigit():
+        name = "_" + name
+    return name
+
+
 def model_metadata(model: type[DeclarativeBase]) -> dict[str, DataColumn]:
-    columns = model.__table__.columns
+    table: Table = cast(Table, model.__table__)
+    columns = table.columns
     ret = {}
-    for c in columns:
-        default = c.default
-        if callable(default):
-            default = default()
-        if default is None:
-            if c.server_default:
-                d = c.server_default
-                if hasattr(d, "arg"):
-                    # e.g. text("0")
-                    default = chop(str(d.arg))
-                else:
-                    default = "$SERVER_DEFAULT$"
-        else:
-            default = str(default)
+    for c in columns.values():
+        default = get_default(c)
         typ = c.type
-        name = CLEAN.sub("", c.key).replace(" ", "_")
-        if name[0].isdigit():
-            name = "_" + name
+        name = jsname(c.key)
 
         d = {
             "name": c.key,

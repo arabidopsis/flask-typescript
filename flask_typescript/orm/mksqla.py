@@ -16,6 +16,7 @@ from sqlalchemy import MetaData
 from sqlalchemy import Table
 from sqlalchemy.dialects import mysql
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql.sqltypes import _Binary
 
 
 PREAMBLE = Template(
@@ -90,6 +91,7 @@ def quote(s: str) -> str:
 
 
 def clean(s: str) -> str:
+    """replace non words or digits with underscores"""
     return re.sub(r"\W|^(?=\d)", "_", s)
 
 
@@ -283,7 +285,7 @@ class ModelMaker:
                     pyimports.add((SQLA, name))
                 else:
                     pyimports.add((MYSQL, name))
-            elif isinstance(typ, (sqla.BINARY,)):
+            elif isinstance(typ, (sqla.BINARY, _Binary)):
                 sqlatype = f"{name}({typ.length})"
                 pytype = "bytes"
                 pyimports.add((SQLA, name))
@@ -357,7 +359,7 @@ class ModelMaker:
             pyimports.add((SQLA, "Index"))
 
         return TableInfo(
-            model=self.pascal_case(table.name),
+            model=self.toclassname(table.name),
             tablename=table.name,
             columns=columns,
             charset=charset,
@@ -394,7 +396,7 @@ class ModelMaker:
     def get_set_name(self, col: Column) -> str:
         return f"Set_{col.key}"
 
-    def pascal_case(self, name: str) -> str:
+    def toclassname(self, name: str) -> str:
         return pascal_case(self.pyname(name))
 
     def column_name(self, name: str) -> str:

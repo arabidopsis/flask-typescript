@@ -115,7 +115,7 @@ def dataclasses(
 
 def init_cli(app: Flask):
     try:
-        from .orm.ui import tables, models  # noqa: 401
+        from .orm.ui import tables, models, tosqla  # noqa: 401
     except ImportError:
         pass
 
