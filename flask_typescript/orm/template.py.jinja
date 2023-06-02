@@ -28,10 +28,10 @@ class {{model}}{% if not abstract %}({{base}}){% endif %}:
         {%- if c.pk %}, primary_key=True{% endif %}
         {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
 {%- endfor %}
-{% if indexes %}
+{% if indexes or schema %}
     __table_args__ = (
     {%- for c in indexes %}
         Index("{{ c.name }}",{% for col in c.columns %} "{{col.name}}",  {% endfor %} unique={{c.unique}}),
-    {%- endfor %}
+    {%- endfor %}{% if schema %}{{ '{' }}"schema": "{{schema}}"{{ '}' }}{% endif -%}
     )
 {% endif %}
