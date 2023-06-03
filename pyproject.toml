@@ -7,6 +7,7 @@ license = "MIT"
 readme = "README.md"
 packages = [{include = "flask_typescript"}]
 include = ["flask_typescript/preamble.ts", "flask_typescript/orm/template.py.jinja"]
+exclude = ["flask_typescript/unused/**"]
 
 [tool.poetry.dependencies]
 python = "^3.10"
