@@ -180,7 +180,7 @@ class ModelMaker:
             elif isinstance(typ, mysql.SET):
                 s = tuple(typ.values)
                 if s not in sets:
-                    sets[s] = self.get_set_name(c)
+                    sets[s] = self.get_set_name(c, sets)
                 sqlatype = sets[s]
                 literal = f"Literal_{sqlatype}"
                 pytype = f"set[{literal}]"
@@ -190,7 +190,7 @@ class ModelMaker:
             elif isinstance(typ, sqla.Enum):
                 s = tuple(typ.enums)
                 if s not in enums:
-                    enums[s] = self.get_enum_name(c)
+                    enums[s] = self.get_enum_name(c, enums)
                 sqlatype = enums[s]
                 pytype = sqlatype
                 sqlatype = f"Enum({sqlatype})"
@@ -344,11 +344,21 @@ class ModelMaker:
         pyimports.add((module, name))
         return sqlatype, pytype
 
-    def get_enum_name(self, col: Column) -> str:
-        return f"Enum_{col.key}"
+    def get_enum_name(self, col: Column, enums: dict[tuple[str, ...], str]) -> str:
+        n = m = f"Enum_{col.key}"
+        i = 0
+        while m in enums.values():
+            i += 1
+            m = n + str(i)
+        return m
 
-    def get_set_name(self, col: Column) -> str:
-        return f"Set_{col.key}"
+    def get_set_name(self, col: Column, sets: dict[tuple[str, ...], str]) -> str:
+        n = m = f"Set_{col.key}"
+        i = 0
+        while m in sets.values():
+            i += 1
+            m = n + str(i)
+        return m
 
     def toclassname(self, name: str) -> str:
         return pascal_case(self.pyname(name))
@@ -398,6 +408,8 @@ class ModelMaker:
             )
 
             ret.append(txt)
+        if sets:
+            pyimports.add(("typing", "TypeAlias"))
 
         self.print_tables(
             tables,

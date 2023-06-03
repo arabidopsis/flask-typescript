@@ -8,8 +8,8 @@ class {{name}}(PyEnum):
 
 {% endfor %}
 
-{%- for name,values in sets %}
-Literal_{{name}} = Literal[{% for n in values -%}
+{%- for name, values in sets %}
+Literal_{{name}}: TypeAlias = Literal[{% for n in values -%}
 "{{n}}"{%- if not loop.last%}, {% endif -%}
 {%- endfor %}]
 {{name}} = SET(*get_args(Literal_{{name}}))
