@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 from typing import cast
+from typing import Iterator
 from typing import TextIO
 from typing import TYPE_CHECKING
 
@@ -216,9 +217,9 @@ def model_ts(*Models: type[DCBase], out: TextIO):
             print(f"// {e}", file=out)
 
 
-def find_models(module: str):
+def find_models(module: str) -> Iterator[DCBase]:
     from importlib import import_module
-    from .meta import Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC
+    from .meta import Base, BaseDC, BasePY, Meta, MetaDC
 
     exclude = {Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC, DeclarativeMeta}
 
