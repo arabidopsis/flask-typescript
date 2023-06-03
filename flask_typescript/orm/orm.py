@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 from typing import cast
 from typing import TextIO
@@ -38,6 +37,8 @@ from .meta import Base
 from .meta import BaseDC
 from .meta import DCBase
 from .meta import get_type_hints_sqla
+from .utils import chop
+from .utils import jsname
 
 if TYPE_CHECKING:
     from sqlalchemy.engine.url import URL
@@ -61,9 +62,6 @@ def is_model(v) -> bool:
     return lenient_issubclass(v, DeclarativeBase)  # or isinstance(v, DeclarativeMeta)
 
 
-CLEAN = re.compile(r'[/\'"()]+')
-
-
 def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
     columns = model.__table__.columns
     ret = {}
@@ -72,13 +70,6 @@ def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
             if c.default.is_scalar:
                 ret[c.key] = c.default.arg
     return ret
-
-
-def chop(s: str) -> str:
-    for q in ['"', "'"]:
-        if s.startswith(q) and s.endswith(q):
-            return s[1:-1]
-    return s
 
 
 def get_default(c: Column) -> Any:
@@ -96,13 +87,6 @@ def get_default(c: Column) -> Any:
     else:
         default = str(default)
     return default
-
-
-def jsname(name: str) -> str:
-    name = CLEAN.sub("", name).replace(" ", "_")
-    if name[0].isdigit():
-        name = "_" + name
-    return name
 
 
 def model_metadata(model: type[DeclarativeBase]) -> dict[str, DataColumn]:
