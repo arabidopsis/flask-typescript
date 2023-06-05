@@ -111,8 +111,7 @@ class ModelMaker:
 
         for c in table.columns:
             typ = c.type
-            name = typ.__class__.__name__
-            sqlatype = name
+            sqlatype = name = typ.__class__.__name__
             pytype = "Any"
             server_default = None
 
@@ -126,19 +125,15 @@ class ModelMaker:
             if isinstance(typ, (sqla.Double, sqla.DOUBLE_PRECISION, mysql.DOUBLE)):
                 pytype = "float"
                 sqlatype = "Double"
-                pyimports.add((SQLA, "Double"))
+                pyimports.add((SQLA, sqlatype))
             elif isinstance(typ, (sqla.Boolean, sqla.BOOLEAN)):
-                if name == "BOOLEAN":
-                    name = "Boolean"
-                    sqlatype = name
+                sqlatype = "Boolean"
                 pytype = "bool"
-                pyimports.add((SQLA, name))
+                pyimports.add((SQLA, sqlatype))
             elif isinstance(typ, (sqla.Float, sqla.REAL)):
-                if name == "REAL":
-                    name = "Float"
-                    sqlatype = name
+                sqlatype = "Float"
                 pytype = "float"
-                pyimports.add((SQLA, name))
+                pyimports.add((SQLA, sqlatype))
             elif isinstance(
                 typ,
                 (
@@ -213,11 +208,11 @@ class ModelMaker:
                         usecharset = True
                         sqlatype = f'{name}(charset="{typ.charset}")'
                     else:
-                        sqlatype = f"{name}"
+                        sqlatype = name
                 else:
                     if name == "TEXT" and not usecharset:
                         name = "Text"
-                    sqlatype = f"{name}"
+                    sqlatype = name
                 if name.startswith(("TINY", "LONG", "MEDIUM")) or name == "TEXT":
                     pyimports.add((MYSQL, name))
                 else:
