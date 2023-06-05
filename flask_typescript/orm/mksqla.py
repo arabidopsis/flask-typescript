@@ -339,21 +339,19 @@ class ModelMaker:
         pyimports.add((module, name))
         return sqlatype, pytype
 
-    def get_enum_name(self, col: Column, enums: dict[tuple[str, ...], str]) -> str:
-        n = m = f"Enum_{col.key}"
+    def unique_name(self, name: str, names: set[str]) -> str:
+        m = name
         i = 0
-        while m in enums.values():
+        while m in names:
             i += 1
-            m = n + str(i)
+            m = name + str(i)
         return m
 
+    def get_enum_name(self, col: Column, enums: dict[tuple[str, ...], str]) -> str:
+        return self.unique_name(f"Enum_{col.key}", set(enums.values()))
+
     def get_set_name(self, col: Column, sets: dict[tuple[str, ...], str]) -> str:
-        n = m = f"Set_{col.key}"
-        i = 0
-        while m in sets.values():
-            i += 1
-            m = n + str(i)
-        return m
+        return self.unique_name(f"Set_{col.key}", set(sets.values()))
 
     def toclassname(self, name: str) -> str:
         return pascal_case(self.pyname(name))
