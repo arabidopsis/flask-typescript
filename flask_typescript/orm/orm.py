@@ -217,7 +217,7 @@ def model_ts(*Models: type[DCBase], out: TextIO):
             print(f"// {e}", file=out)
 
 
-def find_models(module: str) -> Iterator[DCBase]:
+def find_models(module: str) -> Iterator[type[DCBase]]:
     from importlib import import_module
     from .meta import Base, BaseDC, BasePY, Meta, MetaDC
 

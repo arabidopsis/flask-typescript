@@ -87,7 +87,7 @@ def dataclasses(
         if mm is not None:
             namespace = mm.__dict__
     builder = TSBuilder(ignore_defaults=ignore_defaults, ns=namespace)
-    with maybeclose(out) as fp:
+    with maybeclose(out, "wt") as fp:
         for m in modules:
             for model in find_py(m):
                 print(builder(model), file=fp)  # type: ignore

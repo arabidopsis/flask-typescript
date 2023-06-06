@@ -26,5 +26,5 @@ def endpoints(includes: list[str], out: str | None, server: str | None):
     if server:
         server = server.strip().rstrip("/")
 
-    with maybeclose(out) as fp:
+    with maybeclose(out, "wt") as fp:
         endpoints_ts(current_app, includes=includes, out=fp, server=server)
