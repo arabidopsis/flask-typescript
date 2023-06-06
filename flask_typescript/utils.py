@@ -224,3 +224,7 @@ def get_preamble() -> str:
     # path = Path(__file__).parent / "preamble.ts"
     # with open(path, "rt") as fp:
     #     return fp.read()
+
+
+def is_literal(typ: type[Any]) -> bool:
+    return typ.__class__.__name__ == "_LiteralGenericAlias"

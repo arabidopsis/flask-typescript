@@ -39,6 +39,7 @@ from .typing import TSField
 from .typing import TSInterface
 from .utils import FlaskValueError
 from .utils import getdict
+from .utils import is_literal
 from .utils import jquery_form
 from .utils import JsonDict
 from .utils import lenient_issubclass
@@ -259,6 +260,20 @@ class Api:
 
             return t(nomissing(v) for v in ret)
 
+        def literal_string(
+            allowed: set[str],
+            name: str,
+        ) -> Callable[[JsonDict], Any]:
+            def ok(values: JsonDict) -> Any:
+                if name not in values and name in defaults:
+                    return MISSING
+                ret = values.get(name)
+                if ret not in allowed:
+                    raise FlaskValueError(ValueError("illegal value"), loc=name)
+                return ret
+
+            return ok
+
         def cvt(name: str, typ: type[Any]) -> Callable[[JsonDict], Any]:
             nonlocal has_file_storage
             targs = get_args(typ)
@@ -266,6 +281,10 @@ class Api:
                 # check type is list,set,tuple....
                 # assume  list[int], set[float] etc.
                 if len(targs) > 1:
+                    if is_literal(typ):
+                        allowed = {str(v) for v in targs}
+                        return literal_string(allowed, name)
+
                     raise TypeError(f"can't do multi arguments {name}[{typ}]")
                 arg = targs[0]
                 if arg is Ellipsis:
