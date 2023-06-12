@@ -209,11 +209,16 @@ class Api:
 
     def add(self, *classes: type[BaseModel]) -> None:
         """Add random pydantic class to `flask ts` output"""
+        # for cls in classes:
+        #     if not lenient_issubclass(cls, BaseModel):
+        #         raise ValueError(f"{cls.__name__} is not a pydantic class")
         for cls in classes:
-            if not lenient_issubclass(cls, BaseModel):
-                raise ValueError(f"{cls.__name__} is not a pydantic class")
-        for cls in classes:
-            self.dataclasses.add(cls)
+            self.add_rec(cls)
+
+    def add_rec(self, cls: type[BaseModel]) -> None:
+        if not lenient_issubclass(cls, BaseModel):
+            raise ValueError(f"{cls.__name__} is not a pydantic class")
+        self.dataclasses.add(cls)
 
     def get_type_hints(self, func: DecoratedCallable):
         return get_type_hints(func, localns=self.builder.ns, include_extras=False)
@@ -291,7 +296,7 @@ class Api:
                     raise TypeError("... ellipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter
                 if issubclass(arg, BaseModel):
-                    self.dataclasses.add(arg)
+                    self.add_rec(arg)
                     arg = converter(arg)
 
                 elif arg == FileStorage:
@@ -306,7 +311,7 @@ class Api:
                     path=[name] if embed else None,
                     hasdefault=name in defaults,
                 )
-                self.dataclasses.add(typ)
+                self.add_rec(typ)
                 return convert
             else:
                 if typ == FileStorage:
@@ -324,7 +329,7 @@ class Api:
         asjson = "return" in hints and lenient_issubclass(hints["return"], BaseModel)
         # todo check for iterator[BaseModel] too...
         if asjson:
-            self.dataclasses.add(hints["return"])
+            self.add_rec(hints["return"])
 
         if self.function_types and not has_file_storage and len(args) > 1:
             # create a pydantic type from function arguments
@@ -334,7 +339,7 @@ class Api:
                 defaults=defaults,
             )
 
-            self.dataclasses.add(pydant)  # type: ignore
+            self.add_rec(pydant)  # type: ignore
 
         return asjson, embed, cargs
 
@@ -467,8 +472,6 @@ class Api:
     def show_interface(self, name: str | None = None, *, file=sys.stdout) -> None:
         interface = TSInterface(name=name or self.name, fields=self.funcs)
         print(interface, file=file)
-        # for build_func in self.builder.process_seen():
-        #     print(build_func())
 
     @classmethod
     def show_dataclasses(
@@ -478,6 +481,8 @@ class Api:
     ) -> None:
         for model in dataclasses:
             print(cls.builder(model), file=file)
+        for build_func in cls.builder.process_seen():
+            print(build_func(), file=file)
 
     # @classmethod
     # def show_form_data(
