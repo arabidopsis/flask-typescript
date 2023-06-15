@@ -13,3 +13,5 @@ export type FlaskResult<
     | { type: 'error'; error: any }
 
 export type ResultOf<T extends (...args: any) => any> = Awaited<ReturnType<T>>
+
+export type Success<T extends (...args: any) => any> = Extract<ResultOf<T>, { type: 'success' }>['result']
