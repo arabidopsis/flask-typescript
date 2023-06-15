@@ -11,3 +11,5 @@ export type FlaskResult<
     | { type: 'success'; result: Success }
     | { type: 'failure'; errors: Invalid }
     | { type: 'error'; error: any }
+
+export type ResultOf<T extends (...args: any) => any> = Awaited<ReturnType<T>>
