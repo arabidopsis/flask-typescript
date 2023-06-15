@@ -8,6 +8,7 @@ from dataclasses import replace
 from functools import wraps
 from inspect import signature
 from types import FunctionType
+from types import NoneType
 from typing import Any
 from typing import Callable
 from typing import cast
@@ -289,8 +290,11 @@ class Api:
                     if is_literal(typ):
                         allowed = {str(v) for v in targs}
                         return literal_string(allowed, name)
-
-                    raise TypeError(f"can't do multi arguments {name}[{typ}]")
+                    # say: query:str|None = None
+                    if len(targs) > 2 or targs[-1] is not NoneType:
+                        raise TypeError(f"can't do multi arguments {name}[{typ}]")
+                    typ = targs[0]
+                    return lambda values: getvalue(values, name, typ)
                 arg = targs[0]
                 if arg is Ellipsis:
                     raise TypeError("... ellipsis not allowed for argument type")
