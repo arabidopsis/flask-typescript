@@ -165,7 +165,7 @@ class Api:
         *,
         onexc: ExcFunc | None = None,
         decoding: Decoding = None,
-        result: bool = False,
+        result: bool = True,
         function_types: bool = False,
     ):
         if "." in name:
