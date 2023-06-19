@@ -371,6 +371,8 @@ class Api:
 
         asjson, embed, cargs = self.create_api(func)
 
+        names = tuple(cargs.keys())
+
         def doexc(e: ValidationError | FlaskValueError) -> Response:
             onexc = config.onexc or self.config.onexc
             if onexc is not None:
@@ -384,7 +386,7 @@ class Api:
             name = None
             # this is probably async...
             try:
-                values = self.get_req_values(config)
+                values = self.get_req_values(config, names)
                 for name, cvt in cargs.items():
                     v = cvt(values)
                     if v is not MISSING:
@@ -429,21 +431,26 @@ class Api:
 
         return api_func  # type: ignore
 
-    def get_req_values(
-        self,
-        config: Config,
-    ) -> JsonDict:
+    def get_req_values(self, config: Config, names: tuple[str, ...]) -> JsonDict:
         # requires a request context
         decoding = self.config.decoding if config.decoding is None else config.decoding
 
         if request.is_json:
             json = request.json
             assert json is not None
+            if json is None:
+                raise ValueError("no data")
             if decoding == "devalue":
                 from .devalue.parse import unflatten as str2json
 
                 json = str2json(json)
-            assert isinstance(json, dict), type(json)
+            if not isinstance(json, dict) and len(names) == 1:
+                # maybe we have say `def myapi(myid: list[str])`
+                # make it a dict
+                json = {names[0]: json}
+            else:
+                raise ValueError("expecting json object")
+            # assert isinstance(json, dict), type(json)
             return json
 
         ret: MultiDict = CombinedMultiDict([request.args, request.form, request.files])
