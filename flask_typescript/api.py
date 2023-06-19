@@ -399,7 +399,9 @@ class Api:
                 return doexc(e)
 
             except ValueError as e:
-                return doexc(FlaskValueError(e, name))
+                if name:
+                    return doexc(FlaskValueError(e, name))
+                raise e
 
             kwargs.update(args)
             try:
@@ -444,12 +446,13 @@ class Api:
                 from .devalue.parse import unflatten as str2json
 
                 json = str2json(json)
-            if not isinstance(json, dict) and len(names) == 1:
-                # maybe we have say `def myapi(myid: list[str])`
-                # make it a dict
-                json = {names[0]: json}
-            else:
-                raise ValueError("expecting json object")
+            if not isinstance(json, dict):
+                if len(names) == 1:
+                    # maybe we have say `def myapi(myid: list[str])`
+                    # make it a dict
+                    json = {names[0]: json}
+                else:
+                    raise ValueError(f"expecting json object, got {json}")
             # assert isinstance(json, dict), type(json)
             return json
 
