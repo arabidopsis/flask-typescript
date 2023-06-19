@@ -332,7 +332,7 @@ def endpoints_ts(
         return f"{NL}{INDENT*2}export const {name} = {e} satisfies Endpoint"
 
     for blueprint, eps in namespaces.items():
-        body = f"{NL}{INDENT}".join(to_endpoint(name, e) for name, e in eps)
+        body = f"{NL}".join(to_endpoint(name, e) for name, e in eps)
         body = f"export namespace {blueprint} {{{body}{NL}{INDENT}}}"
         ns.append(body)
     body = f"{NL}{INDENT}".join(ns)
