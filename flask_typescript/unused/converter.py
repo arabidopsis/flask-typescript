@@ -75,7 +75,7 @@ def convert_from_schema_(  # noqa: C901
             def nomissing(m):
                 ret = typ(m)
                 if ret is MISSING:
-                    raise FlaskValueError(ValueError("missing data"), loc=name)
+                    raise FlaskValueError("missing data", loc=name)
                 return ret
 
             return [nomissing(m) for m in v]

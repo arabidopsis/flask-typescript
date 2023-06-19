@@ -261,7 +261,7 @@ class Api:
             def nomissing(v):
                 val = arg(v)
                 if val is MISSING:
-                    raise FlaskValueError(ValueError("missing array value"), loc=name)
+                    raise FlaskValueError("missing array value", loc=name)
                 return val
 
             return t(nomissing(v) for v in ret)
@@ -275,7 +275,7 @@ class Api:
                     return MISSING
                 ret = values.get(name)
                 if ret not in allowed:
-                    raise FlaskValueError(ValueError("illegal value"), loc=name)
+                    raise FlaskValueError("illegal value", loc=name)
                 return ret
 
             return ok
@@ -400,7 +400,7 @@ class Api:
 
             except ValueError as e:
                 if name:
-                    return doexc(FlaskValueError(e, name))
+                    return doexc(FlaskValueError(str(e), name))
                 raise e
 
             kwargs.update(args)

@@ -173,15 +173,22 @@ def tojson(v: Any, indent: None | int | str = 2) -> str:
 class FlaskValueError(ValueError):
     """Create an Error similar to pydantic's ValidationError"""
 
-    def __init__(self, exc: ValueError, loc: str, errtype: str = "malformed"):
+    def __init__(
+        self,
+        msg: str,
+        loc: str,
+        errtype: str = "malformed",
+        exc_name="value_error",
+    ):
         super().__init__()
-        self.exc = exc
+        self.msg = msg
         self.loc = loc
         self.errtype = errtype
+        self.exc_name = exc_name
 
-    @property
-    def exc_name(self) -> str:
-        return CamelCase.sub("_", self.exc.__class__.__name__).lower()
+    # @property
+    # def exc_name(self) -> str:
+    #     return CamelCase.sub("_", self.exc.__class__.__name__).lower()
 
     def json(self, *, indent: None | int | str = 2) -> str:
         return tojson(self.errors(), indent=indent)
@@ -190,7 +197,7 @@ class FlaskValueError(ValueError):
         return [
             dict(
                 loc=(self.loc,),
-                msg=str(self.exc),
+                msg=str(self.msg),
                 type=f"{self.exc_name}.{self.errtype}",
             ),
         ]
