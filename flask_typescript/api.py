@@ -13,10 +13,12 @@ from typing import Any
 from typing import Callable
 from typing import cast
 from typing import get_args
+from typing import get_origin
 from typing import get_type_hints
 from typing import TypeAlias
 from typing import TypeVar
 
+from flask import current_app
 from flask import Flask
 from flask import make_response
 from flask import request
@@ -218,7 +220,8 @@ class Api:
 
     def add_rec(self, cls: type[BaseModel]) -> None:
         if not lenient_issubclass(cls, BaseModel):
-            raise ValueError(f"{cls.__name__} is not a pydantic class")
+            return
+            # raise ValueError(f"{cls.__name__} is not a pydantic class")
         self.dataclasses.add(cls)
 
     def get_type_hints(self, func: DecoratedCallable):
@@ -330,7 +333,7 @@ class Api:
 
         cargs = {name: cvt(name, t) for name, t in args.items()}
 
-        asjson = "return" in hints and lenient_issubclass(hints["return"], BaseModel)
+        asjson = "return" in hints and self.okjson(hints["return"])
         # todo check for iterator[BaseModel] too...
         if asjson:
             self.add_rec(hints["return"])
@@ -346,6 +349,14 @@ class Api:
             self.add_rec(pydant)  # type: ignore
 
         return asjson, embed, cargs
+
+    def okjson(self, cls: Any) -> bool:
+        if lenient_issubclass(cls, BaseModel):
+            return True
+
+        origin = get_origin(cls)
+        # flask will jsonify response values of type dict and list
+        return origin in {dict, list}
 
     def typename(self, func) -> str:
         return f"Func{funcname(func).title()}"
@@ -406,32 +417,30 @@ class Api:
             kwargs.update(args)
             try:
                 ret = func(**kwargs)
+
                 if asjson:
-                    if not isinstance(ret, BaseModel):
-                        # this is a bug!
-                        raise ValueError(
-                            f"type signature for {funcname(func)} returns a pydantic instance, but we have {ret}",
-                        )
                     if result:
                         ret = Success(result=ret)
-                    ret = self.make_response(
-                        ret.json(),
-                        200,
-                        {"Content-Type": "application/json"},
-                    )
-
+                    if isinstance(ret, BaseModel):
+                        return self.json_response(ret.json())
+                    # works on list and dict
+                    return current_app.json.response(ret)
                 return ret
             except ApiError as e:
                 # ApiErrors turn into a sveltekit type="error"
-                return self.make_response(
-                    e.json(),
-                    400,
-                    {"Content-Type": "application/json"},
-                )
+                return self.json_response(e.json(), 400)
+
             except FlaskValueError as e:
                 return doexc(e)
 
         return api_func  # type: ignore
+
+    def json_response(self, v: str, status: int = 200) -> Response:
+        return self.make_response(
+            v,
+            status,
+            {"Content-Type": "application/json"},
+        )
 
     def get_req_values(self, config: Config, names: tuple[str, ...]) -> JsonDict:
         # requires a request context
@@ -470,11 +479,7 @@ class Api:
             v = e.json()
         else:
             v = tojson(Failure(errors=e.errors()))
-        return self.make_response(
-            v,
-            200 if result else 400,
-            {"Content-Type": "application/json"},
-        )
+        return self.json_response(v, 200 if result else 400)
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
         return make_response(stuff, code, headers)
