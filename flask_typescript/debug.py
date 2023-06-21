@@ -43,6 +43,7 @@ class DebugApi(Api):
     def get_req_values(
         self,
         config: Config,
+        names: tuple[str, ...],
     ) -> JsonDict:
         decoding = self.config.decoding if config.decoding is None else config.decoding
 

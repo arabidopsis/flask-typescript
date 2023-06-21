@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date  # noqa:
 from pathlib import Path
 
-from flask import Flask
 from flask import make_response
 from flask import render_template
 from flask import Response
@@ -14,6 +13,7 @@ from werkzeug.datastructures import FileStorage
 
 from flask_typescript.api import Api
 from flask_typescript.api import ApiError
+from flask_typescript.json import PyFlask as Flask
 
 
 class Arg5(BaseModel):
@@ -145,6 +145,12 @@ def arg6(extra: list[ArgXX]) -> Arg5:
 @api
 def json() -> Json:
     return Json(a=1, b=22)
+
+
+@app.get("/json2")
+@api(result=True)
+def json2() -> list[dict[str, int]]:
+    return [dict(a=1, b=22)]
 
 
 @app.post("/error")

@@ -90,3 +90,15 @@ class TestFlask(unittest.TestCase):
         self.assertTrue("status" in json)
         self.assertEqual(json["status"], 400)
         self.assertEqual(json["error"], dict(message="this has failed"))
+
+    def test_ResultJson(self):
+        """Test Result Json"""
+        with self.client:
+            response = self.client.get("/json2")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.is_json)
+        json = response.json
+        self.assertTrue("result" in json)
+        self.assertEqual(json["type"], "success")
+        result = json["result"]
+        self.assertEqual(result, [dict(a=1, b=22)])

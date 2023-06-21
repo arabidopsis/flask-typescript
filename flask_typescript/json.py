@@ -38,4 +38,6 @@ class DefaultJSONProvider(FlaskDefaultJSONProvider):
 
 
 class PyFlask(Flask):
+    """Allow for return types like list[X] where X is a pydantic class"""
+
     json_provider_class = DefaultJSONProvider
