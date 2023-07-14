@@ -25,6 +25,7 @@ jupyter = "^1.0.0"
 python-dotenv = "^1.0.0"
 fastapi = "^0.95.0"
 mysqlclient = "^2.1.1"
+bump-pydantic = "^0.3.0"
 
 [build-system]
 requires = ["poetry-core"]

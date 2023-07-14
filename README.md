@@ -81,10 +81,14 @@ async function user_ok(user:User): Promise<User> {
     if (!resp.ok) {
         throw new Error("no good!")
     }
-    return await resp.json() as User
+    const reply = await resp.json()
+    if (reply.type !== 'success')
+        throw new Error("no good!")
+    return reply.result as User
 }
 const user:User = {name:'me', age: 61}
 const user2 = await user_ok(user)
+user2.age === 20
 ```
 
 
@@ -102,7 +106,10 @@ async function user_ok(formData:FormData): Promise<User> {
     if (!resp.ok) {
         throw new Error("no good!")
     }
-    return await resp.json() as User
+    const reply = await resp.json()
+    if (reply.type !== 'success')
+        throw new Error("no good!")
+    return reply.result as User
 }
 const login = document.forms['login']
 login.addEventListener('submit', async (e) => {
