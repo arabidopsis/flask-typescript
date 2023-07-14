@@ -55,7 +55,7 @@ class ArgXX(BaseModel):
 
 app = Flask(__name__)
 
-app.config.from_prefixed_env()  # type: ignore
+app.config.from_prefixed_env()
 
 api = Api("Base", result=False)
 
@@ -114,7 +114,7 @@ def filestorage(val: list[int], myfiles: list[FileStorage]) -> Ret1:
         print(f.filename, f.content_length, f.content_type)
     return Ret1(
         val=[str(v * 4) for v in val],
-        res=b"---".join(m.read() for m in myfiles),
+        res=b"---".join(m.read() for m in myfiles).decode("utf-8"),
     )
 
 

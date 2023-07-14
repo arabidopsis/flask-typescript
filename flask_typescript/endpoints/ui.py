@@ -20,7 +20,7 @@ from .flask_endpoints import endpoints_ts
     help="server to connect to",
 )
 @click.argument("includes", nargs=-1)
-def endpoints(includes: list[str], out: str | None, server: str | None):
+def endpoints(includes: list[str], out: str | None, server: str | None) -> None:
     """Typescript types of Flask endpoints"""
 
     if server:

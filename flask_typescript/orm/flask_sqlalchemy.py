@@ -5,10 +5,10 @@ from typing import Any
 from flask_sqlalchemy import SQLAlchemy as _SQLAlchemy
 from flask_sqlalchemy.model import Model
 from sqlalchemy import MetaData
+from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import DeclarativeMeta
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
-from .orm import DeclarativeBase
 from .orm import is_model
 
 
@@ -43,7 +43,7 @@ class Base(DeclarativeBase, metaclass=Meta):
 
 
 class SQLAlchemy(_SQLAlchemy):
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         kwargs.setdefault("model_class", Base)
         super().__init__(**kwargs)
 

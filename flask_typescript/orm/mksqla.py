@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 from importlib.resources import read_text
 from typing import Any
-from typing import TextIO
+from typing import IO
 from typing import TypedDict
 
 import sqlalchemy as sqla
@@ -325,7 +325,11 @@ class ModelMaker:
             return "float"
         return "str"
 
-    def other(self, col: Column, pyimports: set[tuple[str, str]]) -> tuple[str, str]:
+    def other(
+        self,
+        col: Column[Any],
+        pyimports: set[tuple[str, str]],
+    ) -> tuple[str, str]:
         if self.throw:
             raise RuntimeError(
                 f'unknown field "{col.table.name}.{col.name}" {col.type}',
@@ -347,10 +351,10 @@ class ModelMaker:
             m = name + str(i)
         return m
 
-    def get_enum_name(self, col: Column, enums: dict[tuple[str, ...], str]) -> str:
+    def get_enum_name(self, col: Column[Any], enums: dict[tuple[str, ...], str]) -> str:
         return self.unique_name(f"Enum_{col.key}", set(enums.values()))
 
-    def get_set_name(self, col: Column, sets: dict[tuple[str, ...], str]) -> str:
+    def get_set_name(self, col: Column[Any], sets: dict[tuple[str, ...], str]) -> str:
         return self.unique_name(f"Set_{col.key}", set(sets.values()))
 
     def toclassname(self, name: str) -> str:
@@ -364,13 +368,13 @@ class ModelMaker:
             return self.ns[name]
         return pyname(name)
 
-    def __call__(self, tables: list[Table], out: TextIO = sys.stdout) -> None:
+    def __call__(self, tables: list[Table], out: IO[str] = sys.stdout) -> None:
         return self.run_tables(tables, out)
 
     def run_tables(
         self,
         tables: list[Table],
-        out: TextIO = sys.stdout,
+        out: IO[str] = sys.stdout,
     ) -> None:
         pyimports: set[tuple[str, str]] = {
             ("sqlalchemy.orm", "Mapped"),
@@ -412,7 +416,7 @@ class ModelMaker:
             base=self.base,
         )
 
-    def render_table(self, **data) -> str:
+    def render_table(self, **data: Any) -> str:
         return self.template.render(**data)
 
     def print_tables(
@@ -420,10 +424,10 @@ class ModelMaker:
         tables: list[Table],
         models: list[str],
         pyimports: set[tuple[str, str]],
-        out: TextIO = sys.stdout,
+        out: IO[str] = sys.stdout,
         base: str = "Base",
     ) -> None:
-        def key(p):
+        def key(p: tuple[str, str]) -> tuple[str, str]:
             if p[0] in {"datetime", "enum", "typing"}:
                 return "aaaa" + p[0], p[1]
             return p

@@ -6,10 +6,10 @@ from collections import defaultdict
 from dataclasses import dataclass
 from dataclasses import replace
 from typing import Any
+from typing import IO
 from typing import Iterator
 from typing import Literal
 from typing import Sequence
-from typing import TextIO
 
 from flask import current_app
 from flask import Flask
@@ -76,13 +76,15 @@ class Fmt:
     variable: str
 
     @property
-    def is_static(self):
+    def is_static(self) -> bool:
         return self.converter is None
 
     @property
-    def ts_type(self):
+    def ts_type(self) -> str:
         if self.args and self.converter == "any":
             return " | ".join(repr(s) for s in self.args[0])
+        if self.converter is None:
+            return "any"
         return {
             "default": "string",
             "int": "number",
@@ -105,13 +107,13 @@ class Endpoint:
     server: str | None
 
     @property
-    def blueprint(self):
+    def blueprint(self) -> str:
         if "." in self.endpoint:
             return self.endpoint.split(".", 1)[0]
         return "app"
 
     @property
-    def function(self):
+    def function(self) -> str:
         if "." in self.endpoint:
             return self.endpoint.split(".", 1)[1]
         return self.endpoint
@@ -185,7 +187,7 @@ class Endpoint:
         return f"{q1}{self.endpoint}{q1}: {body}"
 
 
-def to_re(s: str) -> re.Pattern:
+def to_re(s: str) -> re.Pattern[str]:
     # if not s.startswith("^"):
     #     s = "^" + s
     # if not s.endswith("$"):
@@ -313,7 +315,7 @@ export type Endpoint = {
 
 def endpoints_ts(
     app: Flask,
-    out: TextIO,
+    out: IO[str],
     includes: list[str] | None = None,
     server: str | None = None,
 ) -> None:
@@ -328,7 +330,7 @@ def endpoints_ts(
         namespaces[ep.blueprint].append((ep.function, ep.to_ts(level=3, asbody=True)))
     ns = []
 
-    def to_endpoint(name: str, e: str):
+    def to_endpoint(name: str, e: str) -> str:
         return f"{NL}{INDENT*2}export const {name} = {e} satisfies Endpoint"
 
     for blueprint, eps in namespaces.items():

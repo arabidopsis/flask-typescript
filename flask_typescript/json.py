@@ -16,7 +16,7 @@ from werkzeug.http import http_date
 # from flask/json/provider.py
 def _default(o: Any) -> Any:
     if isinstance(o, date):
-        return http_date(o)  # type: ignore
+        return http_date(o)
 
     if isinstance(o, (decimal.Decimal, uuid.UUID)):
         return str(o)

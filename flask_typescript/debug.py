@@ -10,13 +10,13 @@ from .api import Api
 from .api import Config
 from .api import Decoding
 from .api import ExcFunc
+from .types import JsonDict
 from .utils import dedottify
 from .utils import jquery_form
-from .utils import JsonDict
 from .utils import unflatten
 
 
-def multi(val) -> TypeGuard[MultiDict]:
+def multi(val: Any) -> TypeGuard[MultiDict[str, Any]]:
     return isinstance(val, MultiDict)
 
 
@@ -26,7 +26,7 @@ class DebugApi(Api):
     def __init__(
         self,
         name: str,
-        data: MultiDict | dict[str, Any] | str,
+        data: MultiDict[str, Any] | dict[str, Any] | str,
         *,
         onexc: ExcFunc | None = None,
         decoding: Decoding = None,
@@ -72,6 +72,6 @@ class DebugApi(Api):
         return Response(stuff, code, headers)
 
     @property
-    def is_json(self):
+    def is_json(self) -> bool:
         # json tests are just pure dictionaries....
         return not isinstance(self.data, MultiDict)

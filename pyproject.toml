@@ -29,3 +29,13 @@ mysqlclient = "^2.1.1"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.mypy]
+strict = true
+python_executable=".venv/bin/python"
+exclude = ['^fabfile\.py$', '^tests/.*','^flask_typescript/unused/*','test_.*\.py$', 'app/.*']
+
+[[tool.mypy.overrides]]
+module = "app.*"
+strict = false
+disallow_untyped_defs=false

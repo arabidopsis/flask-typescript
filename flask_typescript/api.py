@@ -7,14 +7,18 @@ from dataclasses import MISSING
 from dataclasses import replace
 from functools import wraps
 from inspect import signature
-from types import FunctionType
 from types import NoneType
 from typing import Any
 from typing import Callable
 from typing import cast
+from typing import Generator
+from typing import Generic
 from typing import get_args
 from typing import get_origin
 from typing import get_type_hints
+from typing import IO
+from typing import Literal
+from typing import Self
 from typing import TypeAlias
 from typing import TypeVar
 
@@ -32,23 +36,21 @@ from werkzeug.datastructures import MultiDict
 
 from .types import ErrorDict
 from .types import Failure
-from .types import Generic
+from .types import JsonDict
 from .types import ModelType
 from .types import ModelTypeOrMissing
 from .types import Success
-from .typing import Literal
 from .typing import TSBuilder
-from .typing import TSField
 from .typing import TSInterface
 from .utils import FlaskValueError
 from .utils import getdict
 from .utils import is_literal
 from .utils import jquery_form
-from .utils import JsonDict
 from .utils import lenient_issubclass
 from .utils import maybeclose
 from .utils import multidict_json
 from .utils import tojson
+from .zod import TSField
 
 # from .utils import unwrap
 
@@ -66,18 +68,20 @@ class Config:
     result: bool | None = None
 
 
-def patch(e: ValidationError, json: JsonDict) -> JsonDict:
+def patch(e: ValidationError, json: dict[str, Any]) -> JsonDict:
     """try and patch list validation errors"""
 
-    def list_patch(locs):
+    # TODO: intger attributes for arrays....
+    def list_patch(locs: tuple[str | int, ...]) -> None:
         *path, attr = locs
         tgt = json
+
         for loc in path:
-            tgt = tgt[loc]
+            tgt = tgt[loc]  # type: ignore
         # turn into a list
-        val = tgt[attr]
+        val = tgt[attr]  # type: ignore
         if not isinstance(val, list):
-            tgt[attr] = [val]
+            tgt[attr] = [val]  # type: ignore
 
     errs = e.errors()
     if not all(err["type"] == "type_error.list" for err in errs):
@@ -94,13 +98,13 @@ def converter(
     model: type[ModelType],
     path: list[str] | None = None,
     hasdefault: bool = False,
-) -> Callable[[JsonDict], ModelTypeOrMissing]:
+) -> Callable[[dict[str, Any]], ModelTypeOrMissing[BaseModel]]:
     # we would really, *really* like to use this
     # - simpler - converter ... but mulitple <select>s
     # with only one option selected doesn't return a list
     # so this may fail with a pydantic type_error.list
 
-    def convert(values: JsonDict) -> ModelTypeOrMissing:
+    def convert(values: dict[str, Any]) -> ModelTypeOrMissing[BaseModel]:
         values = getdict(values, path)
         if not values and hasdefault:
             return MISSING
@@ -112,7 +116,7 @@ def converter(
     return convert
 
 
-def funcname(func: FunctionType) -> str:
+def funcname(func: Callable[..., Any]) -> str:
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__
 
@@ -187,7 +191,7 @@ class Api:
         onexc: ExcFunc | None = None,
         decoding: Decoding = None,
         result: bool | None = None,
-    ):
+    ) -> Callable[..., Any]:
         config = Config(onexc=onexc, decoding=decoding, result=result)
         if func is None:
             return lambda func: self.api(
@@ -200,7 +204,7 @@ class Api:
         )
 
     @contextmanager
-    def namespace(self, ns: dict[str, Any]):
+    def namespace(self, ns: dict[str, Any]) -> Generator[Self, None, None]:
         # used with:
         # with api.namespace(locals()) as api:
         #   ....
@@ -224,7 +228,7 @@ class Api:
             # raise ValueError(f"{cls.__name__} is not a pydantic class")
         self.dataclasses.add(cls)
 
-    def get_type_hints(self, func: DecoratedCallable):
+    def get_type_hints(self, func: DecoratedCallable) -> dict[str, Any]:
         return get_type_hints(func, localns=self.builder.ns, include_extras=False)
 
     def create_api(
@@ -261,7 +265,7 @@ class Api:
                 ret = [ret]
 
             # catch ValueError?
-            def nomissing(v):
+            def nomissing(v: Any) -> Any:
                 val = arg(v)
                 if val is MISSING:
                     raise FlaskValueError("missing array value", loc=name)
@@ -346,7 +350,7 @@ class Api:
                 defaults=defaults,
             )
 
-            self.add_rec(pydant)  # type: ignore
+            self.add_rec(pydant)
 
         return asjson, embed, cargs
 
@@ -358,11 +362,11 @@ class Api:
         # flask will jsonify response values of type dict and list
         return origin in {dict, list}
 
-    def typename(self, func) -> str:
+    def typename(self, func: Callable[..., Any]) -> str:
         return f"Func{funcname(func).title()}"
 
     @property
-    def is_json(self):
+    def is_json(self) -> bool:
         return request.is_json
 
     def api(
@@ -392,7 +396,7 @@ class Api:
             return self.onexc(e, result=result or False)
 
         @wraps(func)
-        def api_func(*_args, **kwargs):
+        def api_func(*_args: Any, **kwargs: Any) -> Any:
             args = {}
             name = None
             # this is probably async...
@@ -463,9 +467,11 @@ class Api:
                 else:
                     raise ValueError(f"expecting json object, got {json}")
             # assert isinstance(json, dict), type(json)
-            return json
+            return cast(dict[str, Any], json)
 
-        ret: MultiDict = CombinedMultiDict([request.args, request.form, request.files])
+        ret: MultiDict[str, Any] = CombinedMultiDict(
+            [request.args, request.form, request.files],
+        )
 
         if decoding == "jquery":
             json = jquery_form(ret)
@@ -478,17 +484,24 @@ class Api:
         if not result:
             v = e.json()
         else:
-            v = tojson(Failure(errors=e.errors()))
+            errors = cast(list[ErrorDict], e.errors())
+            # Failure.update_forward_refs()
+            v = tojson(Failure(errors=errors))
         return self.json_response(v, 200 if result else 400)
 
     def make_response(self, stuff: str, code: int, headers: dict[str, str]) -> Response:
         return make_response(stuff, code, headers)
 
-    def to_ts(self, name: str | None = None, *, file=sys.stdout) -> None:
+    def to_ts(self, name: str | None = None, *, file: IO[str] = sys.stdout) -> None:
         self.show_dataclasses(list(self.dataclasses), file=file)
         self.show_interface(name, file=file)
 
-    def show_interface(self, name: str | None = None, *, file=sys.stdout) -> None:
+    def show_interface(
+        self,
+        name: str | None = None,
+        *,
+        file: IO[str] = sys.stdout,
+    ) -> None:
         interface = TSInterface(name=name or self.name, fields=self.funcs)
         print(interface, file=file)
 
@@ -496,7 +509,7 @@ class Api:
     def show_dataclasses(
         cls,
         dataclasses: list[type[BaseModel]],
-        file=sys.stdout,
+        file: IO[str] = sys.stdout,
     ) -> None:
         for model in dataclasses:
             print(cls.builder(model), file=file)
@@ -547,7 +560,7 @@ class Api:
         out: str | None = None,
         without_interface: bool = False,
         nosort: bool = False,
-    ):
+    ) -> None:
         """Generate Typescript types for this Flask app."""
         if "flask-typescript" not in app.extensions:
             return

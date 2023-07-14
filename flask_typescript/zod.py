@@ -18,7 +18,7 @@ class ZOD:
     def get_generic_args(self) -> list[ZOD]:
         raise NotImplementedError("need to implement typscript generation")
 
-    def to_generic_args(self):
+    def to_generic_args(self) -> str:
         return ", ".join([t.to_generic_args() for t in self.get_generic_args()])
 
     @property

@@ -63,7 +63,7 @@ def tables(
     help="output file",
 )
 @click.argument("modules", nargs=-1)
-def models(modules: tuple[str], out: str | None):
+def models(modules: tuple[str], out: str | None) -> None:
     """Typescript types from sqlalchemy Models"""
     from flask import current_app
 
@@ -112,7 +112,7 @@ def tosqla(
     schema: str | None,
     tables: tuple[str],
     throw: bool,
-):
+) -> None:
     """Render tables into sqlalchemy.ext.declarative classes."""
 
     from sqlalchemy import create_engine, MetaData, Table

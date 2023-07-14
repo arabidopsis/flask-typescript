@@ -20,21 +20,24 @@ from .constants import UNDEFINED
 undefined = object()  # fake undefined
 
 
-def hashable(o):
+def hashable(o: Any) -> bool:
     return isinstance(o, Hashable)
 
 
 REVIVERS = dict[str, Callable[[Any], Any]]
 
 
-def parse(serialized: str, revivers: REVIVERS | None = None):
+def parse(serialized: str, revivers: REVIVERS | None = None) -> Any:
     return unflatten(json.loads(serialized), revivers)
 
 
-def unflatten(values: list | int, revivers: REVIVERS | None = None):  # noqa: C901
+def unflatten(  # noqa: C901
+    values: list[Any] | int,
+    revivers: REVIVERS | None = None,
+) -> Any:
     revivers = revivers or {}
 
-    def hydrate(index: int, standalone: bool = False):
+    def hydrate(index: int, standalone: bool = False) -> Any:
         if index == UNDEFINED:
             # raise ValueError("can't implement undefined!")
             return undefined

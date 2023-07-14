@@ -5,13 +5,15 @@ import re
 from contextlib import contextmanager
 from importlib.resources import read_text
 from typing import Any
+from typing import Callable
+from typing import Generator
+from typing import IO
 from typing import Iterator
 
 from pydantic.json import pydantic_encoder
 from werkzeug.datastructures import MultiDict
 
 from .types import ErrorDict
-from .types import JsonDict
 
 
 ARG = re.compile(r"\[([^]]*)\]")
@@ -34,7 +36,7 @@ def flatten(json: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
             yield key, val
 
 
-def unflatten(md: MultiDict) -> JsonDict:
+def unflatten(md: MultiDict[str, Any]) -> dict[str, Any]:
     ret: dict[str, Any] = {}
     for key, val in md.items(multi=True):
         if key in ret:
@@ -49,7 +51,7 @@ def unflatten(md: MultiDict) -> JsonDict:
     return ret
 
 
-def dedottify(json: dict[str, Any], recursive=False) -> JsonDict:
+def dedottify(json: dict[str, Any], recursive: bool = False) -> dict[str, Any]:
     """undottify keys"""
     # {'a.b':1, 'a.c':2 , 'a.d': 3} => {a: {b:1,c:2, d:3}}
     ret: dict[str, Any] = {}
@@ -103,10 +105,10 @@ def jquery_keys(key: str) -> list[str]:
 # names that are just [0] are invalid e.g.:
 # [0]: val1
 # [1]: val2
-def jquery_json(form: MultiDict) -> JsonDict:
+def jquery_json(form: MultiDict[str, Any]) -> dict[str, Any]:
     ret: dict[str, Any] = {}
 
-    def ensure(lst, idx):
+    def ensure(lst: Any, idx: int) -> None:
         if not isinstance(lst, list):
             raise ValueError("inconsitent keys")
         while len(lst) <= idx:
@@ -141,16 +143,16 @@ def jquery_json(form: MultiDict) -> JsonDict:
     return ret
 
 
-def jquery_form(form: MultiDict) -> JsonDict:
+def jquery_form(form: MultiDict[str, Any]) -> dict[str, Any]:
     """Turn a jquery form dictionary into a dotted dictionary"""
     return dedottify(jquery_json(form))
 
 
-def multidict_json(form: MultiDict) -> JsonDict:
+def multidict_json(form: MultiDict[str, Any]) -> dict[str, Any]:
     return dedottify(unflatten(form))
 
 
-def getdict(values: JsonDict, path: list[str] | None = None) -> JsonDict:
+def getdict(values: dict[str, Any], path: list[str] | None = None) -> dict[str, Any]:
     if path is None:
         return values
     for attr in path:
@@ -178,8 +180,8 @@ class FlaskValueError(ValueError):
         msg: str,
         loc: str,
         errtype: str = "malformed",
-        exc_name="value_error",
-    ):
+        exc_name: str = "value_error",
+    ) -> None:
         super().__init__()
         self.msg = msg
         self.loc = loc
@@ -204,14 +206,14 @@ class FlaskValueError(ValueError):
 
 
 @contextmanager
-def maybeclose(out: str | None, mode="rt"):
+def maybeclose(out: str | None, mode: str = "rt") -> Generator[IO[str], None, None]:
     import sys
 
     if out:
         fp = open(out, mode)
         close = True
     else:
-        fp = sys.stdout  # type: ignore
+        fp = sys.stdout
         close = False
     try:
         yield fp
@@ -220,7 +222,7 @@ def maybeclose(out: str | None, mode="rt"):
             fp.close()
 
 
-def unwrap(func):
+def unwrap(func: Callable[..., Any]) -> Callable[..., Any]:
     while hasattr(func, "__wrapped__"):
         func = func.__wrapped__
     return func

@@ -11,6 +11,8 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic.generics import GenericModel
 
+# if TYPE_CHECKING:
+#     from pydantic.error_wrappers import ErrorDict as PyErrorDict
 
 Loc = tuple[int | str, ...]
 
@@ -30,7 +32,7 @@ class Success(GenericModel, Generic[T]):
 
 
 class Failure(BaseModel):
-    errors: list[ErrorDict]
+    errors: list[ErrorDict]  # | list[PyErrorDict]
     type: Literal["failure"] = "failure"
 
 

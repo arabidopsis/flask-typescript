@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import MISSING
 from typing import Any
 from typing import cast
+from typing import IO
 from typing import Iterator
-from typing import TextIO
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Column
@@ -30,7 +31,6 @@ from ..dc import DataColumn
 from ..dc import metadata_to_ts
 from ..typing import Annotation
 from ..typing import INDENT
-from ..typing import MISSING
 from ..typing import TSBuilder
 from ..typing import TSTypeable
 from ..utils import lenient_issubclass
@@ -59,7 +59,7 @@ MAP = {
 }
 
 
-def is_model(v) -> bool:
+def is_model(v: Any) -> bool:
     return lenient_issubclass(v, DeclarativeBase)  # or isinstance(v, DeclarativeMeta)
 
 
@@ -73,7 +73,7 @@ def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
     return ret
 
 
-def get_default(c: Column) -> Any:
+def get_default(c: Column[Any]) -> Any:
     default: Any = c.default
     if callable(default):
         default = default()
@@ -151,14 +151,19 @@ def model_to_ts(name: str, meta: dict[str, DataColumn]) -> str:
     return "\n".join(out)
 
 
-def datacolumn(out: TextIO):
+def datacolumn(out: IO[str]) -> None:
     builder = TSBuilder(ignore_defaults=True)
     b = builder(DataColumn).to_ts()
     b = b.replace("maxlength:", "maxlength?:")  # HACK!
     print(b, file=out)
 
 
-def dodatabase(url: str | URL, *tables: str, preamble: bool = True, out: TextIO):
+def dodatabase(
+    url: str | URL,
+    *tables: str,
+    preamble: bool = True,
+    out: IO[str],
+) -> None:
     if preamble:
         datacolumn(out)
     engine = create_engine(url)
@@ -199,7 +204,7 @@ class ModelBuilder(TSBuilder):
         return super().get_annotations(cls)
 
 
-def model_ts(*Models: type[DCBase], out: TextIO):
+def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
     builder = ModelBuilder()
     # seen = set()
     for Model in Models:
@@ -233,7 +238,7 @@ def find_models(module: str) -> Iterator[type[DCBase]]:
             yield v
 
 
-def model_meta_ts(*Models: type[BaseDC], preamble: bool = True, out: TextIO):
+def model_meta_ts(*Models: type[BaseDC], preamble: bool = True, out: IO[str]) -> None:
     if preamble:
         datacolumn(out)
     for Model in Models:

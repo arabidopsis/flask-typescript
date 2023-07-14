@@ -76,7 +76,7 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
             f"{cls} is not a dataclass type",
         )
 
-    def get_default(f: Field) -> Any:
+    def get_default(f: Field[Any]) -> Any:
         if f.default is not MISSING:
             return f.default
         if f.default_factory is not MISSING:
@@ -94,7 +94,7 @@ def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
             f"{cls} is not a subclass of pydantic.BaseModel",
         )
 
-    def get_default(f) -> Any:
+    def get_default(f: Any) -> Any:
         if "default" in f:
             return f["default"]
         return MISSING
@@ -188,7 +188,7 @@ class TSInterface:
     interface: Literal["interface", "type", "namespace"] = "namespace"
 
     @property
-    def is_generic(self):
+    def is_generic(self) -> bool:
         return any(f.is_generic for f in self.fields)
 
     # def get_generics(self) -> list[ZOD]:
@@ -341,16 +341,19 @@ class BaseBuilder:
         for name, module in seen.items():
             yield self.create_builder(name, module)
 
+    def get_type_ts(self, o: TSTypeable) -> TSThing:
+        raise NotImplementedError()
+
     def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
-        def build_func():
+        def build_func() -> TSThing:
             m = import_module(module)
             return self.get_type_ts(getattr(m, name))
 
         return build_func
 
 
-def toz(s):
-    return getattr(ZZZ, s)()
+def toz(s: str) -> ZOD:
+    return getattr(ZZZ, s)()  # type: ignore[no-any-return]
 
 
 DEFAULTS: dict[type[Any], ZOD] = {
@@ -397,7 +400,7 @@ class TSBuilder(BaseBuilder):
             yield self.create_builder(name, module)
 
     def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
-        def build_func():
+        def build_func() -> TSThing:
             m = import_module(module)
             return self.get_type_ts(getattr(m, name))
 
@@ -422,7 +425,8 @@ class TSBuilder(BaseBuilder):
         iargs = [
             self.type_to_zod(s, is_arg=True)
             for s in types
-            if s is not Ellipsis  # e.g. t.Tuple[int,...]
+            if s  # type: ignore[comparison-overlap]
+            is not Ellipsis  # e.g. t.Tuple[int,...]
         ]
         return iargs
 

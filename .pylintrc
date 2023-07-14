@@ -1,0 +1,15 @@
+[MESSAGES CONTROL]
+# consider-using-f-string,
+# redefined-outer-name,
+# redefined-builtin,
+# use-dict-literal,
+# no-else-return,
+# too-many-lines
+disable=missing-docstring,
+        missing-class-docstring,
+        too-few-public-methods
+
+
+
+[FORMAT]
+max-line-length=115

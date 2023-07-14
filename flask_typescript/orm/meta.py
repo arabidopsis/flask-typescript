@@ -10,13 +10,14 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import MappedAsDataclass
+from sqlalchemy.orm import RelationshipProperty
 from sqlalchemy.orm.decl_api import DCTransformDeclarative
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
 Registry: dict[str | None, MetaData] = {}
 
 
-def register_metadata(namespace: dict[str, Any]):
+def register_metadata(namespace: dict[str, Any]) -> None:
     if "__bind_key__" in namespace and "metadata" not in namespace:
         key = namespace.pop("__bind_key__")
         # namespace['metadata'] = SQLAlchemy()._make_metadata(key)
@@ -36,14 +37,26 @@ def register_metadata(namespace: dict[str, Any]):
 
 
 class MetaDC(DCTransformDeclarative):
-    def __new__(metacls, name, bases, namespace, **kw):
+    def __new__(
+        metacls,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kw: Any,
+    ) -> Any:
         name = namespace.pop("__clsname__", name)
         # db.register_metadata(namespace)
         return super().__new__(metacls, name, bases, namespace, **kw)
 
 
 class Meta(DeclarativeAttributeIntercept):
-    def __new__(metacls, name, bases, namespace, **kw):
+    def __new__(
+        metacls,
+        name: str,
+        bases: tuple[type, ...],
+        namespace: dict[str, Any],
+        **kw: Any,
+    ) -> Any:
         name = namespace.pop("__clsname__", name)
         # db.register_metadata(namespace)
         return super().__new__(metacls, name, bases, namespace, **kw)
@@ -80,18 +93,18 @@ def get_type_hints_sqla(
 
     # Mapped[int] really just has m.__args__ == (int,) and m.__origin__ == Mapped
 
-    def getargument(r):
+    def getargument(r: RelationshipProperty[Any]) -> Any:
         if isinstance(r.argument, type) and issubclass(r.argument, DeclarativeBase):
             return r.argument
         if callable(r.argument):
             return r.argument()
         return r.argument
 
-    def totype(r):
+    def totype(r: RelationshipProperty[Any]) -> type[Mapped[type]]:
         cls = getargument(r)
         if r.uselist:
-            cls = list[cls]
-        return Mapped[cls]
+            cls = list[cls]  # type: ignore[valid-type]
+        return Mapped[cls]  # type: ignore[valid-type]
 
     th = get_type_hints(
         Cls,

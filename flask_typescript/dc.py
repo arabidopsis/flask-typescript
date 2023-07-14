@@ -20,7 +20,7 @@ TYPE = Literal[
 ]
 
 
-def dc_to_ts(self: DataColumn, prefix="") -> str:
+def dc_to_ts(self: DataColumn, prefix: str = "") -> str:
     def _bool(name: str) -> str:
         return f"{name}: {str(getattr(self,name)).lower()}"
 
@@ -74,10 +74,10 @@ class DataColumn:
     def _str(self, name: str) -> str:
         return f'{name}: "{getattr(self,name)}"'
 
-    def to_ts(self, prefix="") -> str:
+    def to_ts(self, prefix: str = "") -> str:
         return dc_to_ts(self, prefix)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.to_ts()
 
 

@@ -16,4 +16,7 @@ build:
 generate:
 	PYTHONPATH='..' python -m tests.test_typescript > tests/resources/tstext.ts
 
-.PHONY: tests export ts pre-commit generate
+mypy:
+	~/miniconda3/envs/py311/bin/mypy .
+
+.PHONY: tests export ts pre-commit generate mypy

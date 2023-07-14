@@ -1,13 +1,40 @@
 from __future__ import annotations
 
+from typing import Any
+from typing import Callable
+from typing import overload
+
 import click
+from click import Command
 from flask import current_app
 from flask import Flask
 from flask.cli import AppGroup
 
 from .api import Api
 
-ts_cli = AppGroup("ts", help="type a flask app")
+
+class TAppGroup(AppGroup):
+    @overload
+    def command(self, __func: Callable[..., Any]) -> Command:
+        ...
+
+    @overload
+    def command(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Callable[[Callable[..., Any]], Command]:
+        ...
+
+    def command(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Callable[[Callable[..., Any]], Command] | Command:
+        return super().command(*args, *kwargs)  # type: ignore[no-untyped-call, no-any-return]
+
+
+ts_cli = TAppGroup("ts", help="type a flask app")
 
 
 @ts_cli.command()
@@ -32,7 +59,7 @@ def typescript(
     out: str | None = None,
     without_interface: bool = False,
     nosort: bool = False,
-):
+) -> None:
     """Generate Typescript types for this Flask app."""
     Api.generate_api(current_app, out, without_interface, nosort)
 
@@ -60,7 +87,7 @@ def dataclasses(
     modules: tuple[str],
     ignore_defaults: bool,
     ns: str | None,
-):
+) -> None:
     """Generate typescript from dataclass/pydantic models specified in the command line modules"""
     from importlib import import_module
     from typing import Iterator
@@ -113,7 +140,7 @@ def dataclasses(
 #     Api.generate_form_data(app, out, nosort)
 
 
-def init_cli(app: Flask):
+def init_cli(app: Flask) -> None:
     try:
         from .orm.ui import tables, models, tosqla  # noqa: 401
     except ImportError:
