@@ -33,9 +33,12 @@ build-backend = "poetry.core.masonry.api"
 [tool.mypy]
 strict = true
 python_executable=".venv/bin/python"
-exclude = ['^fabfile\.py$', '^tests/.*','^flask_typescript/unused/*','test_.*\.py$', 'app/.*']
+exclude = ['^fabfile\.py$', '^tests/.*','^flask_typescript/unused/*','test_.*\.py$']
 
 [[tool.mypy.overrides]]
 module = "app.*"
-strict = false
-disallow_untyped_defs=false
+# strict = false # doesn't work
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false
+disallow_incomplete_defs = false

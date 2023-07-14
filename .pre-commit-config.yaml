@@ -54,7 +54,7 @@ repos:
     -   id: mypy
         additional_dependencies: [types-all]
         # exclude: ^testing/resources/
-        exclude: ^tests/.*|^flask_typescript/unused/.*|^app/.*
+        exclude: ^tests/.*|^flask_typescript/unused/.*|^app/test_.*\.py$
 -   repo: meta
     hooks:
     -   id: check-hooks-apply
