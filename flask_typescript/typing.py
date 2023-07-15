@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import collections
 import decimal
+from abc import ABCMeta
+from abc import abstractmethod
 from collections.abc import Mapping
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -109,6 +111,10 @@ def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
     }
 
 
+def get_py_fields(cls: type[Any]) -> dict[str, ModelField]:
+    return cls.__fields__  # type: ignore
+
+
 def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
     # using schema doesn't give any defaults from Field(default_factory...) types
     if not is_pydantic_type(cls):
@@ -124,7 +130,7 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
 
     return {
         name: d
-        for name, f in cls.__fields__.items()
+        for name, f in get_py_fields(cls).items()
         for d in [get_default(f)]
         if d is not MISSING
     }
@@ -283,7 +289,7 @@ class TSEnum:
         return self.to_ts()
 
 
-class BaseBuilder:
+class BaseBuilder(metaclass=ABCMeta):
     def __init__(self, ns: dict[str, Any] | None = None):
         self.build_stack: list[TSTypeable] = []
         self.ns = ns
@@ -341,8 +347,9 @@ class BaseBuilder:
         for name, module in seen.items():
             yield self.create_builder(name, module)
 
+    @abstractmethod
     def get_type_ts(self, o: TSTypeable) -> TSThing:
-        raise NotImplementedError()
+        return NotImplemented
 
     def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
         def build_func() -> TSThing:

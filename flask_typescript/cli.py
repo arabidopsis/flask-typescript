@@ -64,24 +64,28 @@ def typescript(
     Api.generate_api(current_app, out, without_interface, nosort)
 
 
+def dc_to_ts_options(f: Callable[..., Any]) -> Callable[..., Any]:
+    f = click.option(
+        "-i",
+        "--ignore-defaults",
+        is_flag=True,
+        help="don't output default values",
+    )(f)
+    f = click.option(
+        "--ns",
+        help="builder namespace",
+    )(f)
+    f = click.option(
+        "-o",
+        "--out",
+        type=click.Path(dir_okay=False),
+        help="output file",
+    )(f)
+    return click.argument("modules", nargs=-1)(f)
+
+
 @ts_cli.command()
-@click.option(
-    "-i",
-    "--ignore-defaults",
-    is_flag=True,
-    help="don't output default values",
-)
-@click.option(
-    "-o",
-    "--out",
-    type=click.Path(dir_okay=False),
-    help="output file",
-)
-@click.option(
-    "--ns",
-    help="builder namespace",
-)
-@click.argument("modules", nargs=-1)
+@dc_to_ts_options
 def dataclasses(
     out: str | None,
     modules: tuple[str],
@@ -89,24 +93,44 @@ def dataclasses(
     ns: str | None,
 ) -> None:
     """Generate typescript from dataclass/pydantic models specified in the command line modules"""
+    dc_to_ts(out, modules, ignore_defaults, ns)
+
+
+def dc_to_ts(
+    out: str | None,
+    modules: tuple[str],
+    ignore_defaults: bool,
+    ns: str | None,
+) -> None:
+    from pathlib import Path
     from importlib import import_module
     from typing import Iterator
     from pydantic import BaseModel
     from pydantic.generics import GenericModel
     from .typing import TSBuilder, is_pydantic_type, is_dataclass_type
+    from .typing import is_typeddict  # type: ignore[attr-defined]
     from .utils import maybeclose
 
-    def find_py(module: str) -> Iterator[BaseModel]:
+    def find_py(module: str) -> Iterator[tuple[BaseModel, dict[str, Any], bool]]:
         exclude = {BaseModel, GenericModel}
+        if "/" in module or module.endswith(".py"):
+            pth = Path(module).expanduser()
+            g: dict[str, Any] = {}
+            with open(pth, encoding="utf-8") as fp:
+                exec(fp.read(), g)
+            is_exec = True
+        else:
+            m = import_module(module)
+            if m is None:
+                return
+            g = m.__dict__
+            is_exec = False
 
-        m = import_module(module)
-        if m is None:
-            return
-        for v in m.__dict__.values():
-            if is_pydantic_type(v) or is_dataclass_type(v):
+        for v in g.values():
+            if is_pydantic_type(v) or is_dataclass_type(v) or is_typeddict(v):
                 if v in exclude:
                     continue
-                yield v
+                yield v, g, is_exec
 
     namespace = None
     if ns:
@@ -114,10 +138,15 @@ def dataclasses(
         if mm is not None:
             namespace = mm.__dict__
     builder = TSBuilder(ignore_defaults=ignore_defaults, ns=namespace)
+
+    namespace = builder.ns
     with maybeclose(out, "wt") as fp:
         for m in modules:
-            for model in find_py(m):
+            for model, cns, is_exec in find_py(m):
+                if is_exec:
+                    builder.ns = cns
                 print(builder(model), file=fp)  # type: ignore
+                builder.ns = namespace
 
 
 # @ts_cli.command("formdata")

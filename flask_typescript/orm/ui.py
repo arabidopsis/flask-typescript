@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import click
 from flask import current_app
+from flask import has_app_context
 
 from ..cli import ts_cli
 from ..utils import maybeclose
@@ -12,6 +13,8 @@ from .orm import model_ts
 
 def geturl(url: str | None) -> list[str]:
     if not url:
+        if not has_app_context():
+            raise click.BadParameter("specify --url to database", param_hint="url")
         url = current_app.config.get("SQLALCHEMY_DATABASE_URI")
         if url is None:
             binds = current_app.config.get("SQLALCHEMY_BINDS")
