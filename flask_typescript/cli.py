@@ -73,7 +73,12 @@ def dc_to_ts_options(f: Callable[..., Any]) -> Callable[..., Any]:
     )(f)
     f = click.option(
         "--ns",
-        help="builder namespace",
+        help="module name to use as builder namespace",
+    )(f)
+    f = click.option(
+        "--sort",
+        is_flag=True,
+        help="sort output by type name",
     )(f)
     f = click.option(
         "-o",
@@ -91,9 +96,10 @@ def dataclasses(
     modules: tuple[str],
     ignore_defaults: bool,
     ns: str | None,
+    sort: bool,
 ) -> None:
     """Generate typescript from dataclass/pydantic models specified in the command line modules"""
-    dc_to_ts(out, modules, ignore_defaults, ns)
+    dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 
 def dc_to_ts(
@@ -101,6 +107,7 @@ def dc_to_ts(
     modules: tuple[str],
     ignore_defaults: bool,
     ns: str | None,
+    sort: bool,
 ) -> None:
     from pathlib import Path
     from importlib import import_module
@@ -111,7 +118,7 @@ def dc_to_ts(
     from .typing import is_typeddict  # type: ignore[attr-defined]
     from .utils import maybeclose
 
-    def find_py(module: str) -> Iterator[tuple[BaseModel, dict[str, Any], bool]]:
+    def find_py(module: str) -> Iterator[tuple[type[BaseModel], dict[str, Any], bool]]:
         exclude = {BaseModel, GenericModel}
         if "/" in module or module.endswith(".py"):
             pth = Path(module).expanduser()
@@ -140,13 +147,17 @@ def dc_to_ts(
     builder = TSBuilder(ignore_defaults=ignore_defaults, ns=namespace)
 
     namespace = builder.ns
+    mlist = [
+        (model, cns, is_exec) for m in modules for model, cns, is_exec in find_py(m)
+    ]
+    if sort:
+        mlist = sorted(mlist, key=lambda t: t[0].__name__)
     with maybeclose(out, "wt") as fp:
-        for m in modules:
-            for model, cns, is_exec in find_py(m):
-                if is_exec:
-                    builder.ns = cns
-                print(builder(model), file=fp)  # type: ignore
-                builder.ns = namespace
+        for model, cns, is_exec in mlist:
+            if is_exec:
+                builder.ns = cns
+            print(builder(model), file=fp)
+            builder.ns = namespace
 
 
 # @ts_cli.command("formdata")
