@@ -7,7 +7,7 @@ from .cli import dc_to_ts_options
 
 
 @click.group()
-# @click.version_option(VERSION)
+@click.version_option()
 def ts() -> None:
     pass
 
