@@ -42,7 +42,7 @@ class TestFlask(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)
-        self.assertEqual(Arg5(**response.json), Arg5(query="a"))
+        self.assertEqual(Arg5(**response.json), Arg5(query="a"))  # type: ignore
 
     def test_FormList(self):
         """Flask list as jQuery FormData"""
@@ -53,7 +53,7 @@ class TestFlask(unittest.TestCase):
             response = self.client.get("/arg6", data=data)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)
-        self.assertEqual(Arg5(**response.json), Arg5(query="a"))
+        self.assertEqual(Arg5(**response.json), Arg5(query="a"))  # type: ignore
 
     def test_Pydantic(self):
         """test pydantic and url path argument"""
@@ -79,7 +79,7 @@ class TestFlask(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)
         a.selected = a.selected * score
-        self.assertEqual(Arg(**response.json), a)
+        self.assertEqual(Arg(**response.json), a)  # type: ignore
 
     def test_Error(self):
         """Test Error mode"""

@@ -64,29 +64,29 @@ def typescript(
     Api.generate_api(current_app, out, without_interface, nosort)
 
 
-def dc_to_ts_options(f: Callable[..., Any]) -> Callable[..., Any]:
-    f = click.option(
+def dc_to_ts_options(func: Callable[..., Any]) -> Callable[..., Any]:
+    func = click.option(
         "-i",
         "--ignore-defaults",
         is_flag=True,
         help="don't output default values",
-    )(f)
-    f = click.option(
+    )(func)
+    func = click.option(
         "--ns",
         help="module name to use as builder namespace",
-    )(f)
-    f = click.option(
+    )(func)
+    func = click.option(
         "--sort",
         is_flag=True,
         help="sort output by type name",
-    )(f)
-    f = click.option(
+    )(func)
+    func = click.option(
         "-o",
         "--out",
         type=click.Path(dir_okay=False),
         help="output file",
-    )(f)
-    return click.argument("modules", nargs=-1)(f)
+    )(func)
+    return click.argument("modules", nargs=-1)(func)
 
 
 @ts_cli.command()
@@ -123,7 +123,7 @@ def dc_to_ts(
             pth = Path(module).expanduser()
             g: dict[str, Any] = {}
             with open(pth, encoding="utf-8") as fp:
-                exec(fp.read(), g)
+                exec(fp.read(), g)  # pylint: disable=exec-used
             is_exec = True
         else:
             m = import_module(module)
@@ -180,6 +180,7 @@ def dc_to_ts(
 
 
 def init_cli(app: Flask) -> None:
+    # pylint: disable=unused-import
     try:
         from .orm.ui import tables, models, tosqla  # noqa: 401
     except ImportError:

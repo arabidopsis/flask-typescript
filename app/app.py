@@ -15,6 +15,8 @@ from flask_typescript.api import Api
 from flask_typescript.api import ApiError
 from flask_typescript.json import PyFlask as Flask
 
+# pylint: disable=redefined-outer-name
+
 
 class Arg5(BaseModel):
     query: str
