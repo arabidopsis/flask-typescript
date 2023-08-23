@@ -6,9 +6,9 @@ from datetime import datetime
 
 from pydantic import BaseModel
 from werkzeug.datastructures import ImmutableMultiDict
-from werkzeug.datastructures import MultiDict
 
 from flask_typescript.debug import DebugApi
+from flask_typescript.types import ErrorDetails
 
 
 class B(BaseModel):
@@ -26,7 +26,7 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data: MultiDict = ImmutableMultiDict([("a.a", "1")])
+        data = ImmutableMultiDict([("a.a", "1")])
 
         api = DebugApi("Debug", data)
 
@@ -45,7 +45,7 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
+        data = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
         # data = ImmutableMultiDict(flatten({'a':{'a':'1', 'b': '2'}, 'c': {'b':'3'}}))
 
         api = DebugApi("Debug", data)
@@ -68,13 +68,12 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("c.b", "3")])
+        data = ImmutableMultiDict([("a.a", "1"), ("c.b", "3")])
 
         api = DebugApi("Debug", data)
         # because A is defined locally
         with api.namespace(locals()):
             ff = api(func)
-
         result = ff()
         self.assertEqual(result.status_code, 400)
         self.assertTrue(result.is_json)
@@ -83,15 +82,17 @@ class TestApi(unittest.TestCase):
             [
                 {
                     "loc": ["a", "b"],
-                    "msg": "field required",
-                    "type": "value_error.missing",
+                    "msg": "Field required",
+                    "type": "missing",
+                    "input": {"a": "1"},
+                    "url": "https://errors.pydantic.dev/2.2/v/missing",
                 },
             ],
         )
 
     def test_JQuery(self) -> None:
         """test jQuery.param encoding"""
-        data: MultiDict = ImmutableMultiDict(
+        data = ImmutableMultiDict(
             [("a[0]", "1"), ("a[1]", "2"), ("score", "5")],
         )
 
@@ -114,7 +115,7 @@ class TestApi(unittest.TestCase):
 
     def test_JQuery2(self) -> None:
         """test2 jQuery.param encoding"""
-        data: MultiDict = ImmutableMultiDict(
+        data = ImmutableMultiDict(
             [("a[0]", "1"), ("a[1]", "2"), ("myb[b]", "xx"), ("score", "5")],
         )
 
@@ -193,7 +194,7 @@ class TestApi(unittest.TestCase):
             a.a += 2
             return a
 
-        data: MultiDict = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
+        data = ImmutableMultiDict([("a.a", "1"), ("a.b", "2"), ("c.b", "3")])
         # data = ImmutableMultiDict(flatten({'a':{'a':'1', 'b': '2'}, 'c': {'b':'3'}}))
 
         api = DebugApi("Debug", data, result=True)
@@ -221,7 +222,7 @@ class TestApi(unittest.TestCase):
             aa.a += 2
             return aa
 
-        data: MultiDict = ImmutableMultiDict(
+        data = ImmutableMultiDict(
             [("aa.a", "s"), ("aa.b", "2"), ("c.b", "3")],
         )
 
@@ -235,11 +236,11 @@ class TestApi(unittest.TestCase):
         self.assertTrue(result.is_json)
         json = result.json
         self.assertFalse(json.get("type") == "success")
-        errors = [
+        errors: list[ErrorDetails] = [
             {
-                "loc": ("aa", "a"),
-                "msg": "value is not a valid integer",
-                "type": "type_error.integer",
+                "loc": ["aa", "a"],
+                "msg": "Input should be a valid integer, unable to parse string as an integer",
+                "type": "int_parsing",
             },
         ]
         self.assertEqual(Failure(**json), Failure(errors=errors))
@@ -254,7 +255,7 @@ class TestApi(unittest.TestCase):
             self.assertEqual(c, "err")
             return A(val=a * b + sum(d))
 
-        data: MultiDict = ImmutableMultiDict(
+        data = ImmutableMultiDict(
             [
                 ("a", "5"),
                 ("b", "2.2"),

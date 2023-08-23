@@ -5,7 +5,6 @@ from datetime import datetime
 from importlib.resources import read_text
 from typing import Any
 from typing import IO
-from typing import TypedDict
 
 import sqlalchemy as sqla
 from jinja2 import Template
@@ -16,6 +15,7 @@ from sqlalchemy import Table
 from sqlalchemy.dialects import mysql
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.sqltypes import _Binary
+from typing_extensions import TypedDict
 
 from .utils import pascal_case
 from .utils import pyname

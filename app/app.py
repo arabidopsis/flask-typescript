@@ -123,7 +123,11 @@ def filestorage(val: list[int], myfiles: list[FileStorage]) -> Ret1:
 def extra(arg: Arg, extra: int) -> Response:
     # print(arg, extra)
     arg.selected = arg.selected * extra
-    return make_response(arg.json(), 200, {"Content-Type": "application/json"})
+    return make_response(
+        arg.model_dump_json(),
+        200,
+        {"Content-Type": "application/json"},
+    )
 
 
 @app.post("/arg5")

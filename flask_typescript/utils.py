@@ -10,10 +10,9 @@ from typing import Generator
 from typing import IO
 from typing import Iterator
 
-from pydantic.json import pydantic_encoder
+from pydantic_core import ErrorDetails
+from pydantic_core import to_jsonable_python
 from werkzeug.datastructures import MultiDict
-
-from .types import ErrorDict
 
 
 ARG = re.compile(r"\[([^]]*)\]")
@@ -169,7 +168,7 @@ CamelCase = re.compile(r"(?<!^)(?=[A-Z])")
 
 
 def tojson(v: Any, indent: None | int | str = 2) -> str:
-    return json.dumps(v, indent=indent, default=pydantic_encoder)
+    return json.dumps(v, indent=indent, default=to_jsonable_python)
 
 
 class FlaskValueError(ValueError):
@@ -195,12 +194,13 @@ class FlaskValueError(ValueError):
     def json(self, *, indent: None | int | str = 2) -> str:
         return tojson(self.errors(), indent=indent)
 
-    def errors(self) -> list[ErrorDict]:
+    def errors(self) -> list[ErrorDetails]:
         return [
             dict(
                 loc=(self.loc,),
                 msg=str(self.msg),
                 type=f"{self.exc_name}.{self.errtype}",
+                input=None,
             ),
         ]
 

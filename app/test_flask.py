@@ -71,7 +71,10 @@ class TestFlask(unittest.TestCase):
         score = 3
 
         with self.client:
-            response = self.client.post(f"/extra/{score}", json=json.loads(a.json()))
+            response = self.client.post(
+                f"/extra/{score}",
+                json=json.loads(a.model_dump_json()),
+            )
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.is_json)

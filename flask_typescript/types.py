@@ -5,34 +5,44 @@ from typing import Any
 from typing import Generic
 from typing import Literal
 from typing import TypeAlias
-from typing import TypedDict
 from typing import TypeVar
 
 from pydantic import BaseModel
-from pydantic.generics import GenericModel
+from typing_extensions import TypedDict
 
-# if TYPE_CHECKING:
-#     from pydantic.error_wrappers import ErrorDict as PyErrorDict
+# from pydantic_core import ErrorDetails
 
-Loc = tuple[int | str, ...]
-
-
-class ErrorDict(TypedDict):
-    loc: Loc
-    msg: str
-    type: str
+Loc = list[int | str]
 
 
 T = TypeVar("T")
 
 
-class Success(GenericModel, Generic[T]):
+class Success(BaseModel, Generic[T]):
     result: T
     type: Literal["success"] = "success"
 
 
+# HACK! can't just use ErrorDetails from pydantic_core! unless python >= 3.12
+class ErrorDetails(TypedDict):
+    type: str
+    """
+    The type of error that occurred, this is an identifier designed for
+    programmatic use that will change rarely or never.
+
+    `type` is unique for each error message, and can hence be used as an identifier to build custom error messages.
+    """
+    loc: tuple[int | str, ...]
+    """Tuple of strings and ints identifying where in the schema the error occurred."""
+    msg: str
+    """A human readable error message."""
+    # input: Any
+    # """The input data at this `loc` that caused the error."""
+    # ctx: dict[str, Any]
+
+
 class Failure(BaseModel):
-    errors: list[ErrorDict]  # | list[PyErrorDict]
+    errors: list[ErrorDetails]  # | list[PyErrorDict]
     type: Literal["failure"] = "failure"
 
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import dataclasses
 import decimal
 import uuid
+from dataclasses import asdict
+from dataclasses import is_dataclass
 from datetime import date
 from typing import Any
 from typing import Callable
@@ -21,8 +22,8 @@ def _default(o: Any) -> Any:
     if isinstance(o, (decimal.Decimal, uuid.UUID)):
         return str(o)
 
-    if dataclasses and dataclasses.is_dataclass(o):
-        return dataclasses.asdict(o)
+    if is_dataclass(o):
+        return asdict(o)
 
     if hasattr(o, "__html__"):
         return str(o.__html__())

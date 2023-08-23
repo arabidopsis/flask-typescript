@@ -8,7 +8,6 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 from pydantic import Field
-from pydantic.generics import GenericModel
 
 from flask_typescript.typing import TSBuilder
 from flask_typescript.utils import lenient_issubclass
@@ -46,12 +45,12 @@ class WithAnnotated(BaseModel):
 T = TypeVar("T", int, str)
 
 
-class GenericPY(GenericModel, Generic[T]):
+class GenericPY(BaseModel, Generic[T]):
     value: T
     values: list[T]
 
 
-class GenericList(GenericModel, Generic[T]):
+class GenericList(BaseModel, Generic[T]):
     value: list[T]
 
 
@@ -60,7 +59,7 @@ class LinkedList(BaseModel):
     b: LinkedList | None = None
 
 
-class GenericTuple(GenericModel, Generic[T]):
+class GenericTuple(BaseModel, Generic[T]):
     value: tuple[T, int]
 
 
@@ -109,9 +108,7 @@ def get_models():
     return {
         name: v
         for name, v in globals().items()
-        if lenient_issubclass(v, BaseModel)
-        and v is not BaseModel
-        and v is not GenericModel
+        if lenient_issubclass(v, BaseModel) and v is not BaseModel
     }
 
 

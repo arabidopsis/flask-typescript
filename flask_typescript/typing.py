@@ -33,8 +33,8 @@ from typing import TypeVar
 from typing import Union
 
 from pydantic import BaseModel
-from pydantic.fields import ModelField
-from pydantic.generics import GenericModel
+from pydantic.fields import FieldInfo
+from pydantic_core import PydanticUndefined
 from werkzeug.datastructures import FileStorage
 
 from .utils import lenient_issubclass
@@ -111,8 +111,8 @@ def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
     }
 
 
-def get_py_fields(cls: type[Any]) -> dict[str, ModelField]:
-    return cls.__fields__  # type: ignore
+def get_py_fields(cls: type[Any]) -> dict[str, FieldInfo]:
+    return cls.model_fields  # type: ignore
 
 
 def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
@@ -122,9 +122,10 @@ def get_py_defaults(cls: type[Any]) -> dict[str, Any]:
             f"{cls} is not a subclass of pydantic.BaseModel",
         )
 
-    def get_default(f: ModelField) -> Any:
-        r = f.get_default()
-        if r is None and not f.allow_none:
+    def get_default(f: FieldInfo) -> Any:
+        r = f.default
+
+        if r is PydanticUndefined:
             return MISSING
         return r
 
@@ -175,8 +176,8 @@ def get_annotations(
         defaults = {}
     elif is_pydantic_type(cls_or_func):
         defaults = get_py_defaults(cls_or_func)
-        if "__concrete__" in d and issubclass(cls_or_func, GenericModel):
-            del d["__concrete__"]
+        # if "__concrete__" in d and issubclass(cls_or_func, BaseModel):
+        #     del d["__concrete__"]
     else:
         defaults = get_dc_defaults(cast(Type[Any], cls_or_func))
 

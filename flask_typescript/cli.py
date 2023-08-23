@@ -113,13 +113,12 @@ def dc_to_ts(
     from importlib import import_module
     from typing import Iterator
     from pydantic import BaseModel
-    from pydantic.generics import GenericModel
     from .typing import TSBuilder, is_pydantic_type, is_dataclass_type
     from .typing import is_typeddict  # type: ignore[attr-defined]
     from .utils import maybeclose
 
     def find_py(module: str) -> Iterator[tuple[type[BaseModel], dict[str, Any], bool]]:
-        exclude = {BaseModel, GenericModel}
+        exclude = {BaseModel}
         if "/" in module or module.endswith(".py"):
             pth = Path(module).expanduser()
             g: dict[str, Any] = {}

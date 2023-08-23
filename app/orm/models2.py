@@ -5,7 +5,6 @@ from datetime import datetime
 from typing import Annotated
 from typing import get_args
 from typing import Literal
-from typing import TypedDict
 
 from sqlalchemy import Integer
 from sqlalchemy import JSON
@@ -20,6 +19,7 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Enum
+from typing_extensions import TypedDict
 
 from flask_typescript.orm.meta import BaseDC as Base
 

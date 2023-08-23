@@ -29,12 +29,12 @@ from flask import request
 from flask import Response
 from pydantic import BaseModel
 from pydantic import create_model
-from pydantic.error_wrappers import ValidationError
+from pydantic import ValidationError
+from pydantic_core import ErrorDetails
 from werkzeug.datastructures import CombinedMultiDict
 from werkzeug.datastructures import FileStorage
 from werkzeug.datastructures import MultiDict
 
-from .types import ErrorDict
 from .types import Failure
 from .types import JsonDict
 from .types import ModelType
@@ -58,7 +58,7 @@ DecoratedCallable = TypeVar("DecoratedCallable", bound=Callable[..., Any])
 
 
 Decoding: TypeAlias = Literal[None, "devalue", "jquery"]
-ExcFunc: TypeAlias = Callable[[list[ErrorDict], bool], Response]
+ExcFunc: TypeAlias = Callable[[list[ErrorDetails], bool], Response]
 
 
 @dataclass
@@ -84,7 +84,7 @@ def patch(e: ValidationError, json: dict[str, Any]) -> JsonDict:
             tgt[attr] = [val]  # type: ignore
 
     errs = e.errors()
-    if not all(err["type"] == "type_error.list" for err in errs):
+    if not all(err["type"] == "list_type" for err in errs):
         raise e
 
     for err in errs:
@@ -391,7 +391,7 @@ class Api:
         def doexc(e: ValidationError | FlaskValueError) -> Response:
             onexc = config.onexc or self.config.onexc
             if onexc is not None:
-                errs = cast(list[ErrorDict], e.errors())
+                errs = e.errors()
                 return onexc(errs, result or False)
             return self.onexc(e, result=result or False)
 
@@ -409,9 +409,15 @@ class Api:
 
             except ValidationError as e:
                 if name and (self.is_json or embed):
-                    for err in e.errors():
+                    errors = e.errors()
+                    for err in errors:
                         err["loc"] = (name,) + err["loc"]
-                return doexc(e)
+                return doexc(
+                    ValidationError.from_exception_data(
+                        title=e.title,
+                        line_errors=errors,  # type: ignore
+                    ),
+                )
 
             except ValueError as e:
                 if name:
@@ -426,7 +432,7 @@ class Api:
                     if result:
                         ret = Success(result=ret)
                     if isinstance(ret, BaseModel):
-                        return self.json_response(ret.json())
+                        return self.json_response(ret.model_dump_json())
                     # works on list and dict
                     return current_app.json.response(ret)
                 return ret
@@ -484,7 +490,7 @@ class Api:
         if not result:
             v = e.json()
         else:
-            errors = cast(list[ErrorDict], e.errors())
+            errors = e.errors()
             # Failure.update_forward_refs()
             v = tojson(Failure(errors=errors))
         return self.json_response(v, 200 if result else 400)
