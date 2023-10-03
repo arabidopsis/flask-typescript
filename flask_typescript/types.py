@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import _MISSING_TYPE
 from typing import Any
 from typing import Generic
@@ -42,7 +43,7 @@ class ErrorDetails(TypedDict):
 
 
 class Failure(BaseModel):
-    errors: list[ErrorDetails]  # | list[PyErrorDict]
+    errors: Sequence[ErrorDetails]  # | list[PyErrorDict]
     type: Literal["failure"] = "failure"
 
 
