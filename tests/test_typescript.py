@@ -86,7 +86,7 @@ def model_reader(filename: str) -> dict[str, str]:
 
     p = pathlib.Path(__file__).parent / "resources" / filename
     res: dict[str, str] = {}
-    with open(p) as fp:
+    with open(p, encoding="utf-8") as fp:
         typ: list[str] = []
         name = ""
         for line in fp:
@@ -104,7 +104,7 @@ def model_reader(filename: str) -> dict[str, str]:
     return res
 
 
-def get_models():
+def get_models() -> dict[str, type[BaseModel]]:
     return {
         name: v
         for name, v in globals().items()
@@ -112,7 +112,7 @@ def get_models():
     }
 
 
-def generate():
+def generate() -> None:
     Models = get_models()
     builder = TSBuilder()
     for name, model in Models.items():
@@ -123,12 +123,12 @@ def generate():
 
 
 class TestModels(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.Res = model_reader("tstext.ts")
         self.builder = TSBuilder()
         self.Models = get_models()
 
-    def test_Models(self):
+    def test_Models(self) -> None:
         """Test pydantic model to typescript generation"""
         for name, m in self.Models.items():
             with self.subTest(model=name):

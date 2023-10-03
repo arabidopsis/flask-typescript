@@ -51,3 +51,7 @@ disallow_untyped_defs = false
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
 disallow_incomplete_defs = false
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+# strict = false # doesn't work
