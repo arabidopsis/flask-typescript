@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from contextlib import contextmanager
-from importlib.resources import read_text
+from importlib import resources
 from typing import Any
 from typing import Callable
 from typing import Generator
@@ -25,9 +25,9 @@ def lenient_issubclass(
     return isinstance(cls, type) and issubclass(cls, class_or_tuple)  # type: ignore[arg-type]
 
 
-def flatten(json: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
+def flatten(json_iter: Iterator[tuple[str, Any]]) -> Iterator[tuple[str, Any]]:
     """flatten a nested dictionary into a top level dictionary with "dotted" keys"""
-    for key, val in json:
+    for key, val in json_iter:
         if isinstance(val, dict):
             for k, v in flatten((k, v) for k, v in val.items()):
                 yield f"{key}.{k}", v
@@ -228,8 +228,12 @@ def unwrap(func: Callable[..., Any]) -> Callable[..., Any]:
     return func
 
 
+def read_text(package: str, resource: str) -> str:
+    return resources.files(package).joinpath(resource).read_text(encoding="utf-8")
+
+
 def get_preamble() -> str:
-    return read_text("flask_typescript", "preamble.ts")
+    return read_text("flask_typescript", "preamble.d.ts")
     # path = Path(__file__).parent / "preamble.ts"
     # with open(path, "rt") as fp:
     #     return fp.read()

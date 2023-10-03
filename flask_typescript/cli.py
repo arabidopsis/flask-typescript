@@ -45,6 +45,11 @@ ts_cli = TAppGroup("ts", help="type a flask app")
     help="output file",
 )
 @click.option(
+    "-p",
+    "--preamble",
+    help="import preamble from here",
+)
+@click.option(
     "-x",
     "--without-interface",
     is_flag=True,
@@ -59,9 +64,10 @@ def typescript(
     out: str | None = None,
     without_interface: bool = False,
     nosort: bool = False,
+    preamble: str | None = None,
 ) -> None:
     """Generate Typescript types for this Flask app."""
-    Api.generate_api(current_app, out, without_interface, nosort)
+    Api.generate_api(current_app, out, without_interface, nosort, preamble=preamble)
 
 
 def dc_to_ts_options(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -100,6 +106,14 @@ def dataclasses(
 ) -> None:
     """Generate typescript from dataclass/pydantic models specified in the command line modules"""
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
+
+
+@ts_cli.command()
+def preamble() -> None:
+    """print the current preamble"""
+    from .utils import get_preamble
+
+    print(get_preamble())
 
 
 def dc_to_ts(
