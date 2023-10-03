@@ -19,12 +19,24 @@ from .flask_endpoints import endpoints_ts
     "--server",
     help="server to connect to",
 )
+@click.option("--with-doc", is_flag=True, help="documentations as javascript string")
 @click.argument("includes", nargs=-1)
-def endpoints(includes: list[str], out: str | None, server: str | None) -> None:
+def endpoints(
+    includes: list[str],
+    out: str | None,
+    server: str | None,
+    with_doc: bool,
+) -> None:
     """Typescript types of Flask endpoints"""
 
     if server:
         server = server.strip().rstrip("/")
 
     with maybeclose(out, "wt") as fp:
-        endpoints_ts(current_app, includes=includes, out=fp, server=server)
+        endpoints_ts(
+            current_app,
+            includes=includes,
+            out=fp,
+            server=server,
+            with_doc=with_doc,
+        )

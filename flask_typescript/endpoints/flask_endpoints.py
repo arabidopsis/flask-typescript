@@ -146,7 +146,12 @@ class Endpoint:
                 return fmt.ts_type
         return None
 
-    def to_ts(self, level: int = 1, asbody: bool = False) -> str:
+    def to_ts(
+        self,
+        level: int = 1,
+        asbody: bool = False,
+        with_doc: bool = False,
+    ) -> str:
         def default(fmt: Fmt) -> str:
             if fmt.variable not in self.defaults:
                 return ""
@@ -168,18 +173,25 @@ class Endpoint:
             server = ""
         url = f"url({args}) {{ return {server}`{self.url}` }}"
 
-        fields = [m1, url]
+        def mkcomment(doc: str) -> str:
+            sep = f"{NL}{indent}"
+            s = "// " + f"{sep}// ".join(doc.splitlines()) + sep
+            return s
 
+        fields = [m1, url]
+        comm = ""
         if self.doc:
-            s = self.doc.replace("`", r"\`")
-            fields.append(f"doc: `{s}`")
+            if with_doc:
+                s = self.doc.replace("`", r"\`")
+                fields.append(f"doc: `{s}`")
+            else:
+                comm = mkcomment(self.doc)
 
         if self.defaults:
             d = repr(self.defaults)
             d = "{ " + d[1:-1] + " }"
             fields.append(f"defaults: {d}")
-
-        body = f",{NL}{indent}".join(fields)
+        body = comm + f",{NL}{indent}".join(fields)
         body = f"{{{NL}{indent}{body}{NL}{INDENT* (level-1)}}}"
         if asbody:
             return body
@@ -318,6 +330,7 @@ def endpoints_ts(
     out: IO[str],
     includes: list[str] | None = None,
     server: str | None = None,
+    with_doc: bool = False,
 ) -> None:
     endpoints = get_endpoints(
         app,
@@ -327,7 +340,9 @@ def endpoints_ts(
     )
     namespaces = defaultdict(list)
     for ep in endpoints:
-        namespaces[ep.blueprint].append((ep.function, ep.to_ts(level=3, asbody=True)))
+        namespaces[ep.blueprint].append(
+            (ep.function, ep.to_ts(level=3, asbody=True, with_doc=with_doc)),
+        )
 
     ns = []
     single = len(namespaces) == 1
