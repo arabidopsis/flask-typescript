@@ -108,8 +108,8 @@ def dataclasses(
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 
-@ts_cli.command()
-def preamble() -> None:
+@ts_cli.command(name="preamble")
+def preamble_cmd() -> None:
     """print the current preamble"""
     from .utils import get_preamble
 
@@ -196,7 +196,7 @@ def dc_to_ts(
 def init_cli(app: Flask) -> None:
     # pylint: disable=unused-import
     try:
-        from .orm.ui import tables, models, tosqla  # noqa: 401
+        from .orm.ui import tables_cmd, models, tosqla  # noqa: 401
     except ImportError:
         pass
 

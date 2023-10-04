@@ -90,25 +90,25 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     }
 
 
-def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
-    if not is_pydantic_type(cls):
-        raise TypeError(
-            f"{cls} is not a subclass of pydantic.BaseModel",
-        )
+# def get_py_defaults2(cls: type[Any]) -> dict[str, Any]:
+#     if not is_pydantic_type(cls):
+#         raise TypeError(
+#             f"{cls} is not a subclass of pydantic.BaseModel",
+#         )
 
-    def get_default(f: Any) -> Any:
-        if "default" in f:
-            return f["default"]
-        return MISSING
+#     def get_default(f: Any) -> Any:
+#         if "default" in f:
+#             return f["default"]
+#         return MISSING
 
-    schema = cls.schema()
+#     schema = cls.schema()
 
-    return {
-        name: d
-        for name, f in schema["properties"].items()
-        for d in [get_default(f)]
-        if d is not MISSING
-    }
+#     return {
+#         name: d
+#         for name, f in schema["properties"].items()
+#         for d in [get_default(f)]
+#         if d is not MISSING
+#     }
 
 
 def get_py_fields(cls: type[Any]) -> dict[str, FieldInfo]:
@@ -532,10 +532,10 @@ class TSBuilder(BaseBuilder):
             )
 
     def get_dc_ts(self, typ: type[Any]) -> TSInterface:
-        fields = list(self.get_field_types(typ))
+        fieldslist = list(self.get_field_types(typ))
         return TSInterface(
             name=typ.__name__,
-            fields=fields,
+            fields=fieldslist,
             interface="type",
         )
 
