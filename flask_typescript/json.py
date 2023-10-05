@@ -9,7 +9,7 @@ from typing import Any
 from typing import Callable
 
 from flask import Flask
-from flask.json.provider import DefaultJSONProvider as FlaskDefaultJSONProvider
+from flask.json.provider import DefaultJSONProvider
 from pydantic import BaseModel
 from werkzeug.http import http_date
 
@@ -29,16 +29,16 @@ def _default(o: Any) -> Any:
         return str(o.__html__())
 
     if isinstance(o, BaseModel):
-        return o.dict()
+        return o.model_dump()
 
     raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
 
 
-class DefaultJSONProvider(FlaskDefaultJSONProvider):
+class PydanticJSONProvider(DefaultJSONProvider):
     default: Callable[[Any], Any] = staticmethod(_default)
 
 
 class PyFlask(Flask):
     """Allow for return types like list[X] where X is a pydantic class"""
 
-    json_provider_class = DefaultJSONProvider
+    json_provider_class = PydanticJSONProvider
