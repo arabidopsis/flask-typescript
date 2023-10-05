@@ -15,7 +15,10 @@ from .api import Api
 
 class TAppGroup(AppGroup):
     @overload
-    def command(self, __func: Callable[..., Any]) -> Command:
+    def command(  # pylint: disable=arguments-differ
+        self,
+        __func: Callable[..., Any],
+    ) -> Command:
         ...
 
     @overload
@@ -171,26 +174,6 @@ def dc_to_ts(
                 builder.ns = cns
             print(builder(model), file=fp)
             builder.ns = namespace
-
-
-# @ts_cli.command("formdata")
-# @click.option(
-#     "-o",
-#     "--out",
-#     type=click.Path(dir_okay=False),
-#     help="output file",
-# )
-# @click.option(
-#     "--nosort",
-#     is_flag=True,
-#     help="don't sort output of pydantic classes by name",
-# )
-# def generate_formdata(
-#     out: str | None = None,
-#     nosort: bool = False,
-# ):
-#     """Generate Typescript formdata for this Flask app."""
-#     Api.generate_form_data(app, out, nosort)
 
 
 def init_cli(app: Flask) -> None:

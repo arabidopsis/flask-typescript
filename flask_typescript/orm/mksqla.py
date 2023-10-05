@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from datetime import datetime
-from importlib.resources import read_text
 from typing import Any
 from typing import IO
 
@@ -17,6 +16,7 @@ from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.sqltypes import _Binary
 from typing_extensions import TypedDict
 
+from ..utils import read_text
 from .utils import pascal_case
 from .utils import pyname
 from .utils import quote

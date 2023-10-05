@@ -66,35 +66,35 @@ def unflatten(  # noqa: C901
             hydrated[index] = value
         elif isinstance(value, list):
             if isinstance(value[0], str):
-                type = value[0]
+                typeval = value[0]
                 assert revivers is not None
-                reviver = revivers.get(type)
+                reviver = revivers.get(typeval)
                 if reviver is not None:
                     hydrated[index] = ret = reviver(hydrate(value[1]))
                     return ret
 
-                if type == "Date":
+                if typeval == "Date":
                     hydrated[index] = datetime.fromisoformat(value[1])
 
-                elif type == "Set":
+                elif typeval == "Set":
                     hydrated[index] = s = set()
                     for v in value[1:]:
                         s.add(hydrate(v))
 
-                elif type == "Map":
-                    hydrated[index] = map = {}
+                elif typeval == "Map":
+                    hydrated[index] = mapd = {}
                     for i in range(1, len(value), 2):
                         key = hydrate(value[i])
                         if not hashable(key):
                             raise ValueError(f"Invalid key for Map: {key}")
-                        map[key] = hydrate(value[i + 1])
+                        mapd[key] = hydrate(value[i + 1])
 
-                elif type == "null":
-                    hydrated[index] = map = {}
+                elif typeval == "null":
+                    hydrated[index] = mapd = {}
                     for i in range(1, len(value), 2):
-                        map[value[i]] = hydrate(value[i + 1])
+                        mapd[value[i]] = hydrate(value[i + 1])
 
-                elif type == "RegExp":
+                elif typeval == "RegExp":
                     flags = 0
                     FLAGS = {
                         "i": re.IGNORECASE,
@@ -108,16 +108,16 @@ def unflatten(  # noqa: C901
 
                     hydrated[index] = re.compile(value[1], flags)
 
-                elif type == "Object":
+                elif typeval == "Object":
                     # Boolean,String,Number... just use the value
                     hydrated[index] = value[1]
 
-                elif type == "BigInt":
+                elif typeval == "BigInt":
                     # python integers are big!
                     hydrated[index] = int(value[1])
 
                 else:
-                    raise ValueError(f"Unknown type {type}")
+                    raise ValueError(f"Unknown type {typeval}")
 
             else:
                 hydrated[index] = array = [HOLE] * len(value)
