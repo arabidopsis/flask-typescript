@@ -28,7 +28,7 @@ def geturl(url: str | None) -> list[str]:
     return urls
 
 
-@ts_cli.command(name="tables")
+@ts_cli.command("tables")
 @click.option(
     "-o",
     "--out",
@@ -58,7 +58,7 @@ def tables_cmd(
             dodatabase(url, *tables, preamble=not no_preamble, out=fp)
 
 
-@ts_cli.command()
+@ts_cli.command("models")
 @click.option(
     "-o",
     "--out",

@@ -41,6 +41,7 @@ from .types import ModelType
 from .types import ModelTypeOrMissing
 from .types import Success
 from .typing import TSBuilder
+from .typing import TSFunction
 from .typing import TSInterface
 from .utils import FlaskValueError
 from .utils import getdict
@@ -376,7 +377,7 @@ class Api:
     ) -> DecoratedCallable:
         ts = self.builder(func)
         result = config.result if config.result is not None else self.config.result
-
+        assert isinstance(ts, TSFunction)
         if result is True:
             ts = replace(ts, result=result)
         ts = replace(ts, isasync=True)

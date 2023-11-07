@@ -111,7 +111,7 @@ def dataclasses(
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 
-@ts_cli.command(name="preamble")
+@ts_cli.command("preamble")
 def preamble_cmd() -> None:
     """print the current preamble"""
     from .utils import get_preamble
