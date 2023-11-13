@@ -148,7 +148,7 @@ T = TypeVar("T")
 
 
 class ApiError(ValueError, Generic[T]):
-    """Create an Error similar to sveltekits error"""
+    """Create an Error similar to sveltekit's error"""
 
     def __init__(self, status: int, payload: T):
         super().__init__()
