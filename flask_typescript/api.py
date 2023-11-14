@@ -159,7 +159,7 @@ class ApiError(ValueError, Generic[T]):
         return self.payload
 
     def json(self, *, indent: None | int | str = 2) -> str:
-        payload = dict(status=self.status, error=self.toerror())
+        payload = dict(status=self.status, error=self.toerror(), type="error")
         return tojson(payload, indent=indent)
 
 
@@ -409,10 +409,11 @@ class Api:
                         args[name] = v
 
             except ValidationError as e:
+                errors = e.errors()
                 if name and (self.is_json or embed):
-                    errors = e.errors()
                     for err in errors:
                         err["loc"] = (name,) + err["loc"]
+
                 return doexc(
                     ValidationError.from_exception_data(
                         title=e.title,
@@ -439,7 +440,7 @@ class Api:
                 return ret
             except ApiError as e:
                 # ApiErrors turn into a sveltekit type="error"
-                return self.json_response(e.json(), 400)
+                return self.json_response(e.json(), e.status)
 
             except FlaskValueError as e:
                 return doexc(e)
