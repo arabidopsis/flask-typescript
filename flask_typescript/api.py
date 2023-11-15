@@ -255,8 +255,8 @@ class Api:
         def getseqvalue(
             values: JsonDict,
             name: str,
-            t: type[Any],
-            arg: type[Any],
+            t: Callable[[Any], Any],
+            arg: Callable[[Any], Any],
         ) -> Any:
             # e.g. for list[int]
             if name not in values and name in defaults:
@@ -288,6 +288,9 @@ class Api:
 
             return ok
 
+        def pass_thru(v: Any) -> Any:
+            return v
+
         def cvt(name: str, typ: type[Any]) -> Callable[[JsonDict], Any]:
             nonlocal has_file_storage
             targs = get_args(typ)
@@ -313,7 +316,7 @@ class Api:
 
                 elif arg == FileStorage:
                     has_file_storage = True
-                    arg = lambda v: v  # pass-through
+                    arg = pass_thru  # pass-through
 
                 return lambda values: getseqvalue(values, name, typ, arg)
 
@@ -328,7 +331,7 @@ class Api:
             else:
                 if typ == FileStorage:
                     has_file_storage = True
-                    typ = lambda v: v  # type: ignore
+                    typ = pass_thru  # type: ignore
                 return lambda values: getvalue(values, name, typ)
 
         args = {name: t for name, t in hints.items() if name != "return"}
