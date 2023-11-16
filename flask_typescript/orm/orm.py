@@ -228,7 +228,10 @@ def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
             print(f"// {e}", file=out)
 
 
-def find_models(module: str) -> Iterator[type[DCBase]]:
+def find_models(
+    module: str,
+    mapped: str | None = None,
+) -> Iterator[type[DCBase]]:
     from importlib import import_module
     from .meta import BasePY, Meta, MetaDC
 
@@ -237,7 +240,11 @@ def find_models(module: str) -> Iterator[type[DCBase]]:
     m = import_module(module)
     if m is None:
         return
-    for v in m.__dict__.values():
+    if mapped is not None and mapped in m.__dict__:
+        a = m.__dict__[mapped]()
+    else:
+        a = m.__dict__.values()
+    for v in a:
         if is_model(v):
             if v in exclude:
                 continue

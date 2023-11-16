@@ -105,3 +105,15 @@ class TestFlask(unittest.TestCase):
         self.assertEqual(json["type"], "success")
         result = json["result"]
         self.assertEqual(result, [dict(a=1, b=22)])
+
+    def xxxtest_Models(self):
+        from io import StringIO
+        from flask_typescript.orm.orm import find_models
+        from flask_typescript.orm.orm import model_ts
+
+        with self.app.app_context():
+            models = list(find_models("app.orm.models"))
+            for model in models:
+                out = StringIO()
+                model_ts(model, out=out)
+                print(out.getvalue())

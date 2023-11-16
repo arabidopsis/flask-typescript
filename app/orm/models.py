@@ -130,7 +130,7 @@ def orm(
     attachment: str,
     location: str,
     schema: str | None = None,
-) -> tuple[type[Location], type[Paper], type[Attachment]]:
+) -> tuple[type[Paper], type[Attachment], type[Location]]:
     table_args = {"schema": schema}
 
     class ORMPaper(Paper):
@@ -184,15 +184,32 @@ def orm(
                 default=None,
             )
 
-    return (ORMLocation, ORMPaper, ORMAttachment)
+    return (ORMPaper, ORMAttachment, ORMLocation)
+
+
+def mapped_models() -> list[type[Base]]:
+    return list(orm("Paper", "Attachment", "Location"))
 
 
 def test():
+    from dataclasses import is_dataclass
+
     a, b, c = orm("a", "b", "c")
     e, f, g = orm("e", "f", "g", schema="blah")
-    print(Base.metadata.tables.keys())
-    print(a.paper)
-    print(e.paper)
+
+    print(a.metadata.tables.keys())
+    print(b.paper)
+    print(f.paper)
+
+    assert is_dataclass(a)
+    assert is_dataclass(b)
+    assert is_dataclass(c)
+    assert is_dataclass(g)
+    assert a.__table__.name == "a"  # type: ignore
+    assert f.paper.property.mapper.class_ is e
+    assert a.attachments.property.mapper.class_ is b
+    assert b.paper.property.mapper.class_ is a
+    assert e.attachments.property.mapper.class_ is f
 
 
 if __name__ == "__main__":

@@ -79,7 +79,11 @@ def models(modules: tuple[str], out: str | None) -> None:
 
         else:
             for mod in modules:
-                Models = list(find_models(mod))
+                if ":" in mod:
+                    mod, func = mod.split(":")
+                else:
+                    func = None
+                Models = list(find_models(mod, mapped=func))
                 if not Models:
                     continue
                 print(f"// {mod}", file=fp)
