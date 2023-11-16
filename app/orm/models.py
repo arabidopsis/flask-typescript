@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Annotated
 from typing import get_args
 from typing import Literal
+from typing import TypedDict
 
 from sqlalchemy import Integer
 from sqlalchemy import JSON
@@ -20,11 +21,11 @@ from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Enum
-from typing_extensions import TypedDict
 
 from flask_typescript.orm.meta import BaseDC as Base
 
 
+# pylint: disable=no-self-argument
 class Locs(enum.Enum):
     mito = "mito"
     plastid = "plastid"
@@ -69,6 +70,7 @@ class Attachment(Base):
             lambda: Paper,
             primaryjoin=lambda: foreign(Attachment.pubmed) == Paper.pubmed,
             back_populates="attachments",
+            default=None,
         )
 
 
@@ -128,7 +130,7 @@ def orm(
     attachment: str,
     location: str,
     schema: str | None = None,
-) -> list[type[Base]]:
+) -> tuple[type[Location], type[Paper], type[Attachment]]:
     table_args = {"schema": schema}
 
     class ORMPaper(Paper):
@@ -182,4 +184,16 @@ def orm(
                 default=None,
             )
 
-    return [ORMLocation, ORMPaper, ORMAttachment]
+    return (ORMLocation, ORMPaper, ORMAttachment)
+
+
+def test():
+    a, b, c = orm("a", "b", "c")
+    e, f, g = orm("e", "f", "g", schema="blah")
+    print(Base.metadata.tables.keys())
+    print(a.paper)
+    print(e.paper)
+
+
+if __name__ == "__main__":
+    test()

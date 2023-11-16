@@ -32,6 +32,7 @@ from ..dc import metadata_to_ts
 from ..typing import Annotation
 from ..typing import INDENT
 from ..typing import TSBuilder
+from ..typing import TSInterface
 from ..typing import TSTypeable
 from ..utils import lenient_issubclass
 from .meta import Base
@@ -64,6 +65,8 @@ def is_model(v: Any) -> bool:
 
 
 def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
+    if not hasattr(model, "__table__"):
+        return {}
     columns = model.__table__.columns
     ret = {}
     for c in columns:
@@ -186,6 +189,7 @@ def dodatabase(
             print(f"// Error for {table.name}: {e}", file=out)
             continue
         m = model_metadata(M)
+
         print(model_to_ts(name, m), file=out)
         print(metadata_to_ts(name, m), file=out)
 
@@ -209,6 +213,8 @@ def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
     # seen = set()
     for Model in Models:
         v = builder(Model)
+        if isinstance(v, TSInterface) and len(v.fields) == 0:
+            continue
         # seen.add(v.name)
         print(v, file=out)
 
@@ -224,7 +230,7 @@ def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
 
 def find_models(module: str) -> Iterator[type[DCBase]]:
     from importlib import import_module
-    from .meta import Base, BaseDC, BasePY, Meta, MetaDC
+    from .meta import BasePY, Meta, MetaDC
 
     exclude = {Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC, DeclarativeMeta}
 

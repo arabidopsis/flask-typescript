@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date  # noqa:
 from pathlib import Path
 
+from flask import abort
 from flask import make_response
 from flask import render_template
 from flask import Response
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from werkzeug.datastructures import FileStorage
 
+from .bp import bp
 from flask_typescript.api import Api
 from flask_typescript.api import ApiError
 from flask_typescript.json import PyFlask as Flask
@@ -76,6 +78,11 @@ def testwrap(func):
 @app.get("/")
 def index():
     return render_template("index.html")
+
+
+@app.get("/favicon.ico")
+def favicon():
+    abort(404)
 
 
 @app.get("/<path>")
@@ -165,12 +172,10 @@ def error() -> Json:
     raise ApiError(400, payload=dict(message="this has failed"))
 
 
-from .bp import bp
-
 app.register_blueprint(bp)
-from .orm.models import orm
+# from .orm.models import orm
 
 # from .models2 import Paper, Attachment, Location
 
-app.extensions["models"] = orm("paper", "attachment", "location")
+# app.extensions["models"] = orm("paper", "attachment", "location")
 api.init_app(app)

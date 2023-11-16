@@ -7,6 +7,7 @@ from typing import get_type_hints
 import pydantic
 from sqlalchemy import inspect
 from sqlalchemy import MetaData
+from sqlalchemy.exc import NoInspectionAvailable
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import MappedAsDataclass
@@ -38,7 +39,7 @@ def register_metadata(namespace: dict[str, Any]) -> None:
 
 class MetaDC(DCTransformDeclarative):
     def __new__(
-        metacls,
+        mcs,
         name: str,
         bases: tuple[type, ...],
         namespace: dict[str, Any],
@@ -46,12 +47,12 @@ class MetaDC(DCTransformDeclarative):
     ) -> Any:
         name = namespace.pop("__clsname__", name)
         # db.register_metadata(namespace)
-        return super().__new__(metacls, name, bases, namespace, **kw)
+        return super().__new__(mcs, name, bases, namespace, **kw)
 
 
 class Meta(DeclarativeAttributeIntercept):
     def __new__(
-        metacls,
+        mcs,
         name: str,
         bases: tuple[type, ...],
         namespace: dict[str, Any],
@@ -59,7 +60,7 @@ class Meta(DeclarativeAttributeIntercept):
     ) -> Any:
         name = namespace.pop("__clsname__", name)
         # db.register_metadata(namespace)
-        return super().__new__(metacls, name, bases, namespace, **kw)
+        return super().__new__(mcs, name, bases, namespace, **kw)
 
 
 class DCBase(DeclarativeBase):
@@ -90,7 +91,6 @@ def get_type_hints_sqla(
     include_extras: bool = False,
 ) -> dict[str, Any]:
     """add missing relationship values to type hints with @declared_attr"""
-
     # Mapped[int] really just has m.__args__ == (int,) and m.__origin__ == Mapped
 
     def getargument(r: RelationshipProperty[Any]) -> Any:
@@ -106,13 +106,19 @@ def get_type_hints_sqla(
             cls = list[cls]  # type: ignore[valid-type]
         return Mapped[cls]  # type: ignore[valid-type]
 
+    try:
+        relationships = inspect(Cls).relationships  # type: ignore
+    except NoInspectionAvailable:  # a raw DeclarativeBase?
+        relationships = []
+
     th = get_type_hints(
         Cls,
         globalns=globalns,
         localns=localns,
         include_extras=include_extras,
     )
-    d = {r.key: totype(r) for r in inspect(Cls).relationships if r.key not in th}  # type: ignore
+
+    d = {r.key: totype(r) for r in relationships if r.key not in th}
     if d:
         th.update(d)
     if "__clsname__" in th:
