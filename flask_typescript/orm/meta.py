@@ -6,7 +6,6 @@ from typing import get_type_hints
 
 import pydantic
 from sqlalchemy import inspect
-from sqlalchemy import MetaData
 from sqlalchemy.exc import NoInspectionAvailable
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
@@ -15,29 +14,29 @@ from sqlalchemy.orm import RelationshipProperty
 from sqlalchemy.orm.decl_api import DCTransformDeclarative
 from sqlalchemy.orm.decl_api import DeclarativeAttributeIntercept
 
-Registry: dict[str | None, MetaData] = {}
+# Registry: dict[str | None, MetaData] = {}
 
 
-def register_metadata(namespace: dict[str, Any]) -> None:
-    if "__bind_key__" in namespace and "metadata" not in namespace:
-        key = namespace.pop("__bind_key__")
-        # namespace['metadata'] = SQLAlchemy()._make_metadata(key)
-        # return
-        if key is None:
-            if key not in Registry:
-                m = DCBase.metadata
-                if "bind_key" not in m.info:
-                    m.info["bind_key"] = None
-                Registry[None] = m
+# def register_metadata(namespace: dict[str, Any]) -> None:
+#     if "__bind_key__" in namespace and "metadata" not in namespace:
+#         key = namespace.pop("__bind_key__")
+#         # namespace['metadata'] = SQLAlchemy()._make_metadata(key)
+#         # return
+#         if key is None:
+#             if key not in Registry:
+#                 m = DCBase.metadata
+#                 if "bind_key" not in m.info:
+#                     m.info["bind_key"] = None
+#                 Registry[None] = m
 
-            return
-        if key not in Registry:
-            Registry[key] = MetaData(info=dict(bind_key=key))
+#             return
+#         if key not in Registry:
+#             Registry[key] = MetaData(info=dict(bind_key=key))
 
-        namespace["metadata"] = Registry[key]
+#         namespace["metadata"] = Registry[key]
 
 
-class MetaDC(DCTransformDeclarative):
+class DCMeta(DCTransformDeclarative):
     def __new__(
         mcs,
         name: str,
@@ -46,7 +45,6 @@ class MetaDC(DCTransformDeclarative):
         **kw: Any,
     ) -> Any:
         name = namespace.pop("__clsname__", name)
-        # db.register_metadata(namespace)
         return super().__new__(mcs, name, bases, namespace, **kw)
 
 
@@ -59,28 +57,38 @@ class Meta(DeclarativeAttributeIntercept):
         **kw: Any,
     ) -> Any:
         name = namespace.pop("__clsname__", name)
-        # db.register_metadata(namespace)
         return super().__new__(mcs, name, bases, namespace, **kw)
 
 
-class DCBase(DeclarativeBase):
+class _DCBase(DeclarativeBase):
     __clsname__: str
 
 
-class BaseDC(MappedAsDataclass, DCBase, metaclass=MetaDC, dataclass_callable=dataclass):
+class BaseDC(
+    MappedAsDataclass,
+    _DCBase,
+    metaclass=DCMeta,
+    dataclass_callable=dataclass,
+):
+    """Base class for dataclass ORMs that understands __clsname__ for dynamic construction"""
+
     __abstract__ = True
 
 
 class BasePY(
     MappedAsDataclass,
-    DCBase,
-    metaclass=MetaDC,
+    _DCBase,
+    metaclass=DCMeta,
     dataclass_callable=pydantic.dataclasses.dataclass,
 ):
+    """Base class for *pydantic* ORMs that understands __clsname__ for dynamic construction"""
+
     __abstract__ = True
 
 
-class Base(DCBase, metaclass=Meta):
+class Base(_DCBase, metaclass=Meta):
+    """Base class that understands __clsname__ for dynamic construction"""
+
     __abstract__ = True
 
 

@@ -51,11 +51,11 @@ def tables_cmd(
     out: str | None,
     no_preamble: bool = False,
 ) -> None:
-    """Typescript metadata from tables in flask_sqlalchemy"""
+    """Typescript metadata from tables in sqlalchemy"""
     urls = geturl(url)
     with maybeclose(out, "wt") as fp:
-        for url in urls:
-            dodatabase(url, *tables, preamble=not no_preamble, out=fp)
+        for url_ in urls:
+            dodatabase(url_, *tables, preamble=not no_preamble, out=fp)
 
 
 @ts_cli.command("models")

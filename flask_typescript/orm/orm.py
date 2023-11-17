@@ -37,7 +37,6 @@ from ..typing import TSTypeable
 from ..utils import lenient_issubclass
 from .meta import Base
 from .meta import BaseDC
-from .meta import DCBase
 from .meta import get_type_hints_sqla
 from .utils import chop
 from .utils import jsname
@@ -142,12 +141,12 @@ def model_metadata(model: type[DeclarativeBase]) -> dict[str, DataColumn]:
 def model_to_ts(name: str, meta: dict[str, DataColumn]) -> str:
     out = [f"export type {name}Type = {{"]
     for k, v in meta.items():
-        type = MAP[v.type]
+        ttype = MAP[v.type]
         if v.values:
-            type = " | ".join(f'"{v}"' for v in v.values)
+            ttype = " | ".join(f'"{v}"' for v in v.values)
             if v.multiple:
-                type = f"({type})[]"
-        s = f"{INDENT}{k}: {type}"
+                ttype = f"({ttype})[]"
+        s = f"{INDENT}{k}: {ttype}"
         out.append(s)
     out.append("}")
 
@@ -208,7 +207,7 @@ class ModelBuilder(TSBuilder):
         return super().get_annotations(cls)
 
 
-def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
+def model_ts(*Models: type[DeclarativeBase], out: IO[str]) -> None:
     builder = ModelBuilder()
     # seen = set()
     for Model in Models:
@@ -231,11 +230,20 @@ def model_ts(*Models: type[DCBase], out: IO[str]) -> None:
 def find_models(
     module: str,
     mapped: str | None = None,
-) -> Iterator[type[DCBase]]:
+) -> Iterator[type[DeclarativeBase]]:
     from importlib import import_module
-    from .meta import BasePY, Meta, MetaDC
+    from .meta import BasePY, Meta, DCMeta, _DCBase
 
-    exclude = {Base, BaseDC, BasePY, DeclarativeBase, Meta, MetaDC, DeclarativeMeta}
+    exclude = {
+        Base,
+        BaseDC,
+        BasePY,
+        DeclarativeBase,
+        Meta,
+        DCMeta,
+        DeclarativeMeta,
+        _DCBase,
+    }
 
     m = import_module(module)
     if m is None:
