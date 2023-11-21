@@ -511,7 +511,7 @@ class TSBuilder(BaseBuilder):
 
         if (
             is_type
-            and issubclass(cls, collections.abc.Sequence)
+            and issubclass(cls, (collections.abc.Sequence, collections.abc.Set))
             and not issubclass(
                 cls,
                 (str, bytes),
