@@ -347,7 +347,8 @@ class Api:
             ret_class = hints["return"]
             if is_dataclass_type(ret_class):
                 click.secho(
-                    f'WARNING: flask-typescript can\'t really deal with dataclasses as return values: "{func.__module__}.{func.__name__} -> {ret_class.__name__}"',
+                    "WARNING: flask-typescript can't really deal with dataclasses as return values: "
+                    f'"{func.__module__}.{func.__name__} -> {ret_class.__name__}"',
                     fg="yellow",
                     err=True,
                 )
