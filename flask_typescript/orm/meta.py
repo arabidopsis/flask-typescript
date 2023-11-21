@@ -64,7 +64,7 @@ class _DCBase(DeclarativeBase):
     __clsname__: str
 
 
-class BaseDC(
+class DCBase(
     MappedAsDataclass,
     _DCBase,
     metaclass=DCMeta,
@@ -75,7 +75,7 @@ class BaseDC(
     __abstract__ = True
 
 
-class BasePY(
+class PYBase(
     MappedAsDataclass,
     _DCBase,
     metaclass=DCMeta,

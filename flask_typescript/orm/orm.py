@@ -36,7 +36,7 @@ from ..typing import TSInterface
 from ..typing import TSTypeable
 from ..utils import lenient_issubclass
 from .meta import Base
-from .meta import BaseDC
+from .meta import DCBase
 from .meta import get_type_hints_sqla
 from .utils import chop
 from .utils import jsname
@@ -222,7 +222,9 @@ def model_ts(*Models: type[DeclarativeBase], out: IO[str]) -> None:
     #         builder.seen.pop(n)
     for b in builder.process_seen():
         try:
-            print(b(), file=out)
+            res = b()
+            if res is not None:
+                print(res, file=out)
         except AttributeError as e:
             print(f"// {e}", file=out)
 
@@ -232,12 +234,12 @@ def find_models(
     mapped: str | None = None,
 ) -> Iterator[type[DeclarativeBase]]:
     from importlib import import_module
-    from .meta import BasePY, Meta, DCMeta, _DCBase
+    from .meta import PYBase, Meta, DCMeta, _DCBase
 
     exclude = {
         Base,
-        BaseDC,
-        BasePY,
+        DCBase,
+        PYBase,
         DeclarativeBase,
         Meta,
         DCMeta,
@@ -259,7 +261,7 @@ def find_models(
             yield v
 
 
-def model_meta_ts(*Models: type[BaseDC], preamble: bool = True, out: IO[str]) -> None:
+def model_meta_ts(*Models: type[DCBase], preamble: bool = True, out: IO[str]) -> None:
     if preamble:
         datacolumn(out)
     for Model in Models:

@@ -13,6 +13,7 @@ from pydantic import Field
 from werkzeug.datastructures import FileStorage
 
 from .bp import bp
+from .orm.models import Attachment
 from flask_typescript.api import Api
 from flask_typescript.api import ApiError
 from flask_typescript.json import PyFlask as Flask
@@ -170,6 +171,12 @@ def json2() -> list[dict[str, int]]:
 @api
 def error() -> Json:
     raise ApiError(400, payload=dict(message="this has failed"))
+
+
+@app.get("/save-model")
+@api
+def save_model(model: Attachment) -> Attachment:
+    return model
 
 
 app.register_blueprint(bp)

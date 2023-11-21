@@ -37,6 +37,9 @@ from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 from werkzeug.datastructures import FileStorage
 
+from .orm.sqla_typing import find_mapped_default
+from .orm.sqla_typing import is_declarative
+from .orm.sqla_typing import is_mapped_column
 from .utils import lenient_issubclass
 from .zod import TSField
 from .zod import ZOD
@@ -79,10 +82,13 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
         )
 
     def get_default(f: Field[Any]) -> Any:
-        if f.default is not MISSING:
-            return f.default
         if f.default_factory is not MISSING:
             return f.default_factory()
+        if f.default is not MISSING:
+            ret = f.default
+            if is_mapped_column(ret):  # possibly sqlalchemy dataclass
+                ret = find_mapped_default(ret)
+            return ret
         return MISSING
 
     return {
@@ -179,6 +185,8 @@ def get_annotations(
         # if "__concrete__" in d and issubclass(cls_or_func, BaseModel):
         #     del d["__concrete__"]
     else:
+        if "__clsname__" in d and is_declarative(cls_or_func):
+            del d["__clsname__"]
         defaults = get_dc_defaults(cast(Type[Any], cls_or_func))
 
     return {k: Annotation(k, v, defaults.get(k, MISSING)) for k, v in d.items()}
@@ -336,7 +344,7 @@ class BaseBuilder(metaclass=ABCMeta):
     def process_seen(
         self,
         seen: dict[str, str] | None = None,
-    ) -> Iterator[Callable[[], TSThing]]:
+    ) -> Iterator[Callable[[], TSThing | None]]:
         if seen is None:
             seen = {}
         seen.update(self.seen)
@@ -352,10 +360,14 @@ class BaseBuilder(metaclass=ABCMeta):
     def get_type_ts(self, o: TSTypeable) -> TSThing:
         return NotImplemented
 
-    def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
-        def build_func() -> TSThing:
+    def create_builder(self, name: str, module: str) -> Callable[[], TSThing | None]:
+        def build_func() -> TSThing | None:
             m = import_module(module)
-            return self.get_type_ts(getattr(m, name))
+            typ = getattr(m, name)
+            ok = is_dataclass_type(typ) or is_pydantic_type(typ)
+            if not ok:
+                return None
+            return self.get_type_ts(typ)
 
         return build_func
 
@@ -395,7 +407,7 @@ class TSBuilder(BaseBuilder):
     def process_seen(
         self,
         seen: dict[str, str] | None = None,
-    ) -> Iterator[Callable[[], TSThing]]:
+    ) -> Iterator[Callable[[], TSThing | None]]:
         if seen is None:
             seen = {}
         seen.update(self.seen)
@@ -406,13 +418,6 @@ class TSBuilder(BaseBuilder):
 
         for name, module in seen.items():
             yield self.create_builder(name, module)
-
-    def create_builder(self, name: str, module: str) -> Callable[[], TSThing]:
-        def build_func() -> TSThing:
-            m = import_module(module)
-            return self.get_type_ts(getattr(m, name))
-
-        return build_func
 
     def __call__(self, o: TSTypeable) -> TSThing:
         return self.get_type_ts(o)

@@ -1,6 +1,6 @@
 # flask-typescript
 
-typescript for [flask](https://flask.palletsprojects.com/)
+Typescript for [flask](https://flask.palletsprojects.com/)
 based on [FastAPI](https://fastapi.tiangolo.com) and
 [pydantic](https://docs.pydantic.dev/) (on which this package depends).
 
@@ -16,9 +16,9 @@ data.
 
 ```python
 
-python -m pip install git+ssh://git@github.com/arabidopsis/flask-typescript
+python -m pip install git+https://git@github.com/arabidopsis/flask-typescript
 
-python -m pip install 'flask-typescript @ git+ssh://git@github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqla]'
+python -m pip install 'flask-typescript @ git+https://git@github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqla]'
 ```
 
 ```python

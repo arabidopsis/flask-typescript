@@ -22,7 +22,7 @@ from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Enum
 
-from flask_typescript.orm.meta import BaseDC as Base
+from flask_typescript.orm.meta import DCBase as Base
 
 
 # pylint: disable=no-self-argument
@@ -55,7 +55,7 @@ class Attachment(Base):
     __abstract__ = True
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
     pubmed: Mapped[pubmed] = mapped_column()
-    name: Mapped[str | None] = mapped_column(String(128))
+    name: Mapped[str | None] = mapped_column(String(128), default=None)
 
     timestamp: Mapped[datetime] = mapped_column(
         TIMESTAMP,

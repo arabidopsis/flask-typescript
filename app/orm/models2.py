@@ -21,7 +21,7 @@ from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import relationship
 from sqlalchemy.types import Enum
 
-from flask_typescript.orm.meta import BaseDC as Base
+from flask_typescript.orm.meta import DCBase as Base
 
 
 class Locs(enum.Enum):
