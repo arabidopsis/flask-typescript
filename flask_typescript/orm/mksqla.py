@@ -81,8 +81,10 @@ class ModelMaker:
         abstract: bool = False,
         throw: bool = False,
         base: str = "Base",
-        ns: dict[str, str] | None = NS,
+        ns: dict[str, str] | None = None,
     ):
+        if ns is None:
+            ns = NS
         self.with_tablename = with_tablename
         self.abstract = abstract
         self.template = Template(get_template())

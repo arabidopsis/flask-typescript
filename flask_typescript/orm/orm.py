@@ -5,6 +5,7 @@ from typing import Any
 from typing import cast
 from typing import IO
 from typing import Iterator
+from typing import Sequence
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Column
@@ -160,6 +161,16 @@ def datacolumn(out: IO[str]) -> None:
     print(b, file=out)
 
 
+def get_tables(url: str | URL, *tables: str) -> list[Table]:
+    engine = create_engine(url)
+    meta = MetaData()
+    if not tables:
+        meta.reflect(bind=engine)
+    else:
+        meta.reflect(bind=engine, only=list(tables))
+    return list(meta.tables.values())
+
+
 def dodatabase(
     url: str | URL,
     *tables: str,
@@ -168,14 +179,17 @@ def dodatabase(
 ) -> None:
     if preamble:
         datacolumn(out)
-    engine = create_engine(url)
-    meta = MetaData()
-    if not tables:
-        meta.reflect(bind=engine)
-    else:
-        meta.reflect(bind=engine, only=list(tables))
 
-    for table in meta.tables.values():
+    table_ts(out, get_tables(url, *tables))
+
+
+def table_ts(
+    out: IO[str],
+    tables: Sequence[Table],
+    *,
+    metadata_only: bool = False,
+) -> None:
+    for table in tables:
         name = table.name.title()
         try:
 
@@ -188,8 +202,8 @@ def dodatabase(
             print(f"// Error for {table.name}: {e}", file=out)
             continue
         m = model_metadata(M)
-
-        print(model_to_ts(name, m), file=out)
+        if not metadata_only:
+            print(model_to_ts(name, m), file=out)
         print(metadata_to_ts(name, m), file=out)
 
 
@@ -227,6 +241,15 @@ def model_ts(*Models: type[DeclarativeBase], out: IO[str]) -> None:
                 print(res, file=out)
         except AttributeError as e:
             print(f"// {e}", file=out)
+
+
+def find_all_models(*modules: str) -> Iterator[list[type[DeclarativeBase]]]:
+    for mod1 in modules:
+        if ":" in mod1:
+            mod, func = mod1.split(":")
+        else:
+            mod, func = mod1, None
+        yield list(find_models(mod, mapped=func))
 
 
 def find_models(
