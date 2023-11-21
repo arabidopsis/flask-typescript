@@ -40,6 +40,7 @@ from .types import JsonDict
 from .types import ModelType
 from .types import ModelTypeOrMissing
 from .types import Success
+from .typing import is_dataclass_type
 from .typing import TSBuilder
 from .typing import TSFunction
 from .typing import TSInterface
@@ -310,7 +311,7 @@ class Api:
                 if arg is Ellipsis:
                     raise TypeError("... ellipsis not allowed for argument type")
                 # e.g. arg == int so int(value) acts as converter
-                if issubclass(arg, BaseModel):
+                if issubclass(arg, BaseModel) or is_dataclass_type(typ):
                     self.add_rec(arg)
                     arg = converter(arg)
 
@@ -320,7 +321,7 @@ class Api:
 
                 return lambda values: getseqvalue(values, name, typ, arg)
 
-            elif issubclass(typ, BaseModel):
+            elif issubclass(typ, BaseModel) or is_dataclass_type(typ):
                 convert = converter(
                     typ,
                     path=[name] if embed else None,
@@ -340,8 +341,16 @@ class Api:
         embed = npy > self.min_py  # or request.is_json
 
         cargs = {name: cvt(name, t) for name, t in args.items()}
-
-        asjson = "return" in hints and self.okjson(hints["return"])
+        asjson = False
+        if "return" in hints:
+            ret_class = hints["return"]
+            if is_dataclass_type(ret_class):
+                current_app.logger.warning(
+                    "flask-typescript can't deal with dataclasses as return values: %s",
+                    func.__name__,
+                )
+            if self.okjson(ret_class):
+                asjson = True
         # todo check for iterator[BaseModel] too...
         if asjson:
             self.add_rec(hints["return"])
