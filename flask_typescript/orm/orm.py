@@ -8,6 +8,7 @@ from typing import Iterator
 from typing import Sequence
 from typing import TYPE_CHECKING
 
+import click
 from sqlalchemy import Column
 from sqlalchemy import create_engine
 from sqlalchemy import Date
@@ -61,7 +62,10 @@ MAP = {
 
 
 def is_model(v: Any) -> bool:
-    return lenient_issubclass(v, DeclarativeBase)  # or isinstance(v, DeclarativeMeta)
+    return lenient_issubclass(v, DeclarativeBase) and hasattr(
+        v,
+        "__table__",
+    )  # or isinstance(v, DeclarativeMeta)
 
 
 def model_defaults(model: type[DeclarativeBase]) -> dict[str, Any]:
@@ -273,8 +277,11 @@ def find_models(
     m = import_module(module)
     if m is None:
         return
-    if mapped is not None and mapped in m.__dict__:
-        a = m.__dict__[mapped]()
+    if mapped is not None:
+        if mapped in m.__dict__:
+            a = m.__dict__[mapped]()
+        else:
+            raise click.ClickException(f'no function named "{mapped} in {module}')
     else:
         a = m.__dict__.values()
     for v in a:
