@@ -22,6 +22,7 @@ from typing import Self
 from typing import TypeAlias
 from typing import TypeVar
 
+import click
 from flask import current_app
 from flask import Flask
 from flask import make_response
@@ -345,9 +346,10 @@ class Api:
         if "return" in hints:
             ret_class = hints["return"]
             if is_dataclass_type(ret_class):
-                current_app.logger.warning(
-                    "flask-typescript can't deal with dataclasses as return values: %s",
-                    func.__name__,
+                click.secho(
+                    f'WARNING: flask-typescript can\'t really deal with dataclasses as return values: "{func.__module__}.{func.__name__} -> {ret_class.__name__}"',
+                    fg="yellow",
+                    err=True,
                 )
             if self.okjson(ret_class):
                 asjson = True

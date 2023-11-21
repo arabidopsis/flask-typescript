@@ -142,7 +142,7 @@ class BigZed:
         return [g for i in args if i.is_generic for g in i.get_generic_args()]
 
     def to_generic_args(self, args: Sequence[ZOD]) -> str:
-        generics = ZZZ._generic(args)
+        generics = self._generic(args)
         if not generics:
             return ""
         _args = {t.to_generic_args(): t for t in generics}.keys()
