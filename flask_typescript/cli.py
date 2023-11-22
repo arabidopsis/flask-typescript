@@ -143,9 +143,10 @@ def dc_to_ts(
                 exec(fp.read(), g)  # pylint: disable=exec-used
             is_exec = True
         else:
-            m = import_module(module)
-            if m is None:
-                return
+            try:
+                m = import_module(module)
+            except ModuleNotFoundError as e:
+                raise click.ClickException(f"No module named '{module}'") from e
             g = m.__dict__
             is_exec = False
 
@@ -157,9 +158,12 @@ def dc_to_ts(
 
     namespace = None
     if ns:
-        mm = import_module(ns)
-        if mm is not None:
-            namespace = mm.__dict__
+        try:
+            mm = import_module(ns)
+        except ModuleNotFoundError as e:
+            raise click.ClickException(f"No module named '{ns}'") from e
+
+        namespace = mm.__dict__
     builder = TSBuilder(ignore_defaults=ignore_defaults, ns=namespace)
 
     namespace = builder.ns

@@ -77,7 +77,7 @@ def models_cmd(modules: tuple[str], out: str | None) -> None:
             model_ts(*models, out=fp)
 
 
-@ts_cli.command("model-meta")
+@ts_cli.command("models-meta")
 @click.option(
     "-o",
     "--out",

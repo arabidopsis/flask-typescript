@@ -273,10 +273,11 @@ def find_models(
         DeclarativeMeta,
         _DCBase,
     }
+    try:
+        m = import_module(module)
+    except ModuleNotFoundError as e:
+        raise click.ClickException(f"No module named '{module}'") from e
 
-    m = import_module(module)
-    if m is None:
-        return
     if mapped is not None:
         if mapped in m.__dict__:
             a = m.__dict__[mapped]()
