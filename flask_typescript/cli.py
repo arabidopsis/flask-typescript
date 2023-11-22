@@ -6,6 +6,7 @@ from typing import overload
 
 import click
 from click import Command
+from click import Group
 from flask import current_app
 from flask import Flask
 from flask.cli import AppGroup
@@ -35,6 +36,24 @@ class TAppGroup(AppGroup):
         **kwargs: Any,
     ) -> Callable[[Callable[..., Any]], Command] | Command:
         return super().command(*args, *kwargs)  # type: ignore[no-untyped-call, no-any-return]
+
+    @overload
+    def group(  # pylint: disable=arguments-differ
+        self,
+        __func: Callable[..., Any],
+    ) -> Group:
+        ...
+
+    @overload
+    def group(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Group]:
+        ...
+
+    def group(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Callable[[Callable[..., Any]], Group] | Group:
+        return super().group(*args, **kwargs)  # type: ignore[no-untyped-call, no-any-return]
 
 
 ts_cli = TAppGroup("ts", help="type a flask app")
@@ -107,7 +126,7 @@ def dataclasses(
     ns: str | None,
     sort: bool,
 ) -> None:
-    """Generate typescript from dataclass/pydantic models specified in the command line modules"""
+    """Generate Typescript from dataclass/pydantic models specified in the command line modules"""
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 
@@ -183,6 +202,7 @@ def dc_to_ts(
 def init_cli(app: Flask) -> None:
     # pylint: disable=unused-import
     try:
+        # if we don't have sqlalchemy this will fail with ImportError
         from .orm.ui import tables_cmd, models_cmd, tosqla  # noqa: 401
     except ImportError:
         pass

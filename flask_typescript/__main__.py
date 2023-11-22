@@ -21,7 +21,7 @@ def dataclasses(
     ns: str | None,
     sort: bool,
 ) -> None:
-    """Generate typescript from dataclass/pydantic models specified in the command line modules"""
+    """Generate Typescript from dataclass/pydantic models specified in the command line modules"""
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 

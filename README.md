@@ -64,7 +64,7 @@ api.init_app(app)
 You can run `flask ts` to generate some typescript types that can help keep your
 javascript client code in sync with your python api.
 
-Run  (say) `flask ts > src/types.d.ts`
+Run  (say) `flask ts typescript > src/types.d.ts`
 Then on the client we can do:
 
 ```typescript
