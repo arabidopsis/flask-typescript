@@ -3,6 +3,7 @@ from __future__ import annotations
 import click
 from flask import current_app
 from flask import has_app_context
+from sqlalchemy import Table
 
 from ..cli import ts_cli
 from ..utils import maybeclose
@@ -116,6 +117,33 @@ def models_tables_cmd(
             table_ts(out, [m.__table__ for m in models], metadata_only=True)  # type: ignore
 
 
+def get_tables(
+    url: str | None,
+    schema: str | None = None,
+    tables: list[str] | None = None,
+) -> tuple[list[Table], list[str]]:
+    from sqlalchemy import create_engine, MetaData
+
+    urls = geturl(url)
+    ttables: list[Table] = []
+    uout = []
+
+    for url in urls:
+        engine = create_engine(url)
+        uout.append(str(engine.url))  # hide password
+        meta = MetaData()
+        if tables:
+            meta.reflect(bind=engine, only=tables, schema=schema)
+            if schema is not None:
+                tables = [f"{schema}.{t}" for t in tables]
+        else:
+            meta.reflect(bind=engine, schema=schema)
+            tables = list(meta.tables.keys())
+
+        ttables.extend([meta.tables[t] for t in sorted(tables)])
+    return ttables, uout
+
+
 @sqla.command()
 @click.option(
     "-o",
@@ -134,12 +162,6 @@ def models_tables_cmd(
     is_flag=True,
     help="throw on unknown column type (instead of just guessing)",
 )
-@click.option(
-    "--py",
-    "aspydantic",
-    is_flag=True,
-    help="output pydantic classes instead",
-)
 @click.option("--abstract", is_flag=True, help="make classes abstract")
 @click.argument("tables", nargs=-1)
 def tosqla(
@@ -148,35 +170,62 @@ def tosqla(
     out: str | None,
     abstract: bool,
     schema: str | None,
-    tables: tuple[str],
+    tables: tuple[str, ...],
     throw: bool,
-    aspydantic: bool,
 ) -> None:
     """Render tables into sqlalchemy.orm.Declarative classes."""
 
-    from sqlalchemy import create_engine, MetaData, Table
     from .mksqla import ModelMaker
 
-    urls = geturl(url)
-    ttables: list[Table] = []
-    uout = []
-    for url in urls:
-        engine = create_engine(url)
-        uout.append(str(engine.url))  # hide password
-        meta = MetaData()
-        if tables:
-            meta.reflect(bind=engine, only=tables, schema=schema)
-        else:
-            meta.reflect(bind=engine, schema=schema)
-            tables = meta.tables.keys()
-
-        ttables.extend([meta.tables[t] for t in sorted(tables)])
+    ttables, uout = get_tables(url, schema, list(tables))
     mm = ModelMaker(
         with_tablename=not abstract,
         abstract=abstract,
         base=base,
         throw=throw,
-        aspydantic=aspydantic,
+        aspydantic=False,
+    )
+    with maybeclose(out, "wt") as fp:
+        print(f'# from {", ".join(uout)}', file=fp)
+        mm(ttables, out=fp)
+
+
+@sqla.command()
+@click.option(
+    "-o",
+    "--out",
+    type=click.Path(dir_okay=False),
+    help="output file",
+)
+@click.option(
+    "--url",
+    help="sqlalchemy connection url to use",
+)
+@click.option("--schema", help="schema to use")
+@click.option(
+    "--throw",
+    is_flag=True,
+    help="throw on unknown column type (instead of just guessing)",
+)
+@click.argument("tables", nargs=-1)
+def topydantic(
+    url: str | None,
+    out: str | None,
+    schema: str | None,
+    tables: tuple[str, ...],
+    throw: bool,
+) -> None:
+    """Render tables into pydantic classes."""
+
+    from .mksqla import ModelMaker
+
+    ttables, uout = get_tables(url, schema, list(tables))
+    mm = ModelMaker(
+        with_tablename=True,
+        abstract=False,
+        base="BaseModel",
+        throw=throw,
+        aspydantic=True,
     )
     with maybeclose(out, "wt") as fp:
         print(f'# from {", ".join(uout)}', file=fp)

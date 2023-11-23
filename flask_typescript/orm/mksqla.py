@@ -45,7 +45,7 @@ from {{mod}} import {{name}}
 {% endif %}
 {%- endfor -%}
 
-from pydantic import BaseModel as {{base}}
+from pydantic import BaseModel
 """,
 )
 
@@ -87,8 +87,8 @@ class ColumnInfo:
         use_field = self.use_field
         d = self.server_default
         default = None
-        if d and d[1:-1].isdigit():
-            default = d[1:-1]
+        if d and d.isdigit():
+            default = d
         elif self.nullable:
             default = "None"
         if use_field:
@@ -153,12 +153,16 @@ class ModelMaker:
             server_default = None
 
             if c.server_default is not None:
+                # ScalarElementColumnDefault
                 if hasattr(c.server_default, "arg"):
-                    # e.g. text("0")
-                    server_default = quote(str(c.server_default.arg))
+                    server_default = str(c.server_default.arg)
                     if not self.aspydantic:
+                        server_default = quote(server_default)
                         server_default = f"text({server_default})"
                         pyimports.add((SQLA, "text"))
+                    else:
+                        if server_default == "NULL":
+                            server_default = "None"
 
             if isinstance(typ, (sqla.Double, sqla.DOUBLE_PRECISION, mysql.DOUBLE)):
                 pytype = "float"

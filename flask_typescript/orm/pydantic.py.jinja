@@ -13,7 +13,7 @@ class {{name}}(PyEnum):
 
 
 # original name: {%if schema %}{{schema}}.{% endif %}{{table.tablename}}
-class {{table.model}}({{base}}):
+class {{table.model}}(BaseModel):
 {%- for c in table.columns %}
     {{c.column_name}}: {{c.python_type}}{{c.pyfield()}}
 {%- endfor -%}

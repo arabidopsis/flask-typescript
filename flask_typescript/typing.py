@@ -86,6 +86,7 @@ def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
             return f.default_factory()
         if f.default is not MISSING:
             ret = f.default
+            # this will only be the case for unmapped classes
             if is_mapped_column(ret):  # possibly sqlalchemy dataclass
                 ret = find_mapped_default(ret)
             return ret

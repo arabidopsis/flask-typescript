@@ -60,13 +60,14 @@ class Meta(DeclarativeAttributeIntercept):
         return super().__new__(mcs, name, bases, namespace, **kw)
 
 
-class _DCBase(DeclarativeBase):
-    __clsname__: str
+# class _DCBase(DeclarativeBase):
+#     # __clsname__: str
+#     pass
 
 
 class DCBase(
     MappedAsDataclass,
-    _DCBase,
+    DeclarativeBase,
     metaclass=DCMeta,
     dataclass_callable=dataclass,
 ):
@@ -77,7 +78,7 @@ class DCBase(
 
 class PYBase(
     MappedAsDataclass,
-    _DCBase,
+    DeclarativeBase,
     metaclass=DCMeta,
     dataclass_callable=pydantic.dataclasses.dataclass,
 ):
@@ -86,7 +87,7 @@ class PYBase(
     __abstract__ = True
 
 
-class Base(_DCBase, metaclass=Meta):
+class Base(DeclarativeBase, metaclass=Meta):
     """Base class that understands __clsname__ for dynamic construction"""
 
     __abstract__ = True

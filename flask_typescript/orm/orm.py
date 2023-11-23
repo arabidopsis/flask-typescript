@@ -261,7 +261,7 @@ def find_models(
     mapped: str | None = None,
 ) -> Iterator[type[DeclarativeBase]]:
     from importlib import import_module
-    from .meta import PYBase, Meta, DCMeta, _DCBase
+    from .meta import PYBase, Meta, DCMeta
 
     exclude = {
         Base,
@@ -271,7 +271,6 @@ def find_models(
         Meta,
         DCMeta,
         DeclarativeMeta,
-        _DCBase,
     }
     try:
         m = import_module(module)
