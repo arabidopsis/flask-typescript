@@ -1,0 +1,19 @@
+{%- for name, enums in enums %}
+class {{name}}(PyEnum):
+{%- for n, pyname in enums %}
+    {{pyname}} = "{{n}}"
+{%- endfor %}
+{% endfor %}
+
+{%- for name, values in sets %}
+{{name}}_Literal: TypeAlias = Literal[{% for n in values -%}
+"{{n}}"{%- if not loop.last%}, {% endif -%}
+{%- endfor %}]
+{% endfor %}
+
+
+# original name: {%if schema %}{{schema}}.{% endif %}{{table.tablename}}
+class {{table.model}}({{base}}):
+{%- for c in table.columns %}
+    {{c.column_name}}: {{c.python_type}}{{c.pyfield()}}
+{%- endfor -%}

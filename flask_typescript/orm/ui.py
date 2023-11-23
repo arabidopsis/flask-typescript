@@ -134,6 +134,12 @@ def models_tables_cmd(
     is_flag=True,
     help="throw on unknown column type (instead of just guessing)",
 )
+@click.option(
+    "--py",
+    "aspydantic",
+    is_flag=True,
+    help="output pydantic classes instead",
+)
 @click.option("--abstract", is_flag=True, help="make classes abstract")
 @click.argument("tables", nargs=-1)
 def tosqla(
@@ -144,6 +150,7 @@ def tosqla(
     schema: str | None,
     tables: tuple[str],
     throw: bool,
+    aspydantic: bool,
 ) -> None:
     """Render tables into sqlalchemy.orm.Declarative classes."""
 
@@ -169,6 +176,7 @@ def tosqla(
         abstract=abstract,
         base=base,
         throw=throw,
+        aspydantic=aspydantic,
     )
     with maybeclose(out, "wt") as fp:
         print(f'# from {", ".join(uout)}', file=fp)
