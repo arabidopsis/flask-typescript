@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
+from dataclasses import replace
 from datetime import datetime
 from typing import Any
 from typing import IO
@@ -14,7 +16,6 @@ from sqlalchemy import Table
 from sqlalchemy.dialects import mysql
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.sql.sqltypes import _Binary
-from typing_extensions import TypedDict
 
 from ..utils import read_text
 from .utils import pascal_case
@@ -38,10 +39,7 @@ class {{base}}(DeclarativeBase):
 )
 
 
-NAMES = {"class": "class_"}
-
-
-NS = {"+": "watson", "-": "crick"}
+NS = {"+": "watson", "-": "crick", "class": "class_"}
 
 
 SQLA = "sqlalchemy"
@@ -50,10 +48,11 @@ POSTGRES = "sqlalchemy.dialects.postgresql"
 
 
 def get_template() -> str:
-    return read_text("flask_typescript.orm", "template.py.jinja")
+    return read_text("flask_typescript.orm", "sqlalchemy.py.jinja")
 
 
-class ColumnInfo(TypedDict):
+@dataclass
+class ColumnInfo:
     name: str
     column_name: str
     type: str
@@ -66,7 +65,8 @@ class ColumnInfo(TypedDict):
     max_length: int | None
 
 
-class TableInfo(TypedDict):
+@dataclass
+class TableInfo:
     model: str  # python class name
     tablename: str  # sql table name
     columns: list[ColumnInfo]
@@ -282,6 +282,8 @@ class ModelMaker:
             if c.nullable:
                 pytype = f"{pytype} | None"
 
+            max_length = c.type.length if hasattr(c.type, "length") else None
+
             d = ColumnInfo(
                 name=c.name,
                 type=sqlatype,
@@ -292,19 +294,17 @@ class ModelMaker:
                 index=c.index,
                 unique=c.unique or False,
                 column_name=self.column_name(c.name),
-                max_length=None,
+                max_length=max_length,
             )
-            if hasattr(c.type, "length"):
-                d["max_length"] = c.type.length
-            columns.append(d)
 
             for i in indexes:
                 if len(i.columns) == 1:
                     if c.name in i.columns:
-                        d["index"] = True
-                        d["unique"] = i.unique
+                        d = replace(d, index=True, unique=i.unique)
                         indexes.remove(i)
                         break
+
+            columns.append(d)
 
         if indexes:
             pyimports.add((SQLA, "Index"))
@@ -396,14 +396,14 @@ class ModelMaker:
             ]
             xsets = [(sets[k], k) for k in set(sets.keys()) - set(tsets.keys())]
 
-            txt = self.render_table(
+            txt = self.template.render(
                 sets=xsets,
                 enums=xenums,
                 base=self.base,
                 abstract=self.abstract,
                 schema=table.schema,
                 with_tablename=self.with_tablename,
-                **data,
+                table=data,
             )
 
             ret.append(txt)
@@ -411,19 +411,17 @@ class ModelMaker:
             pyimports.add(("typing", "TypeAlias"))
 
         self.print_tables(
-            tables,
             ret,
             pyimports,
             out=out,
             base=self.base,
         )
 
-    def render_table(self, **data: Any) -> str:
-        return self.template.render(**data)
+    # def render_table(self, **data: Any) -> str:
+    #     return self.template.render(**data)
 
     def print_tables(
         self,
-        tables: list[Table],
         models: list[str],
         pyimports: set[tuple[str, str]],
         out: IO[str] = sys.stdout,

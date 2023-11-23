@@ -16,11 +16,11 @@ Literal_{{name}}: TypeAlias = Literal[{% for n in values -%}
 {% endfor %}
 
 
-# original name: {%if schema %}{{schema}}.{% endif %}{{tablename}}
-class {{model}}{% if not abstract %}({{base}}){% endif %}:
+# original name: {%if schema %}{{schema}}.{% endif %}{{table.tablename}}
+class {{table.model}}{% if not abstract %}({{base}}){% endif %}:
     {% if abstract %}__abstract__ = True{% endif -%}
-    {% if with_tablename %}__tablename__ = "{{tablename}}"{% endif %}
-{% for c in columns %}
+    {% if with_tablename %}__tablename__ = "{{table.tablename}}"{% endif %}
+{% for c in table.columns %}
     {{c.column_name}}: Mapped[{{c.python_type}}] = mapped_column({% if c.column_name != c.name -%}"{{c.name}}", {% endif %}{{c.type}}
         {%- if not c.nullable %}, nullable=False{% endif %}
         {%- if c.index %}, index=True{%- endif %}
@@ -28,9 +28,9 @@ class {{model}}{% if not abstract %}({{base}}){% endif %}:
         {%- if c.pk %}, primary_key=True{% endif %}
         {%- if c.server_default %}, server_default={{c.server_default}}{%endif%})
 {%- endfor %}
-{% if indexes or schema %}
+{% if table.indexes or schema %}
     __table_args__ = (
-    {%- for c in indexes %}
+    {%- for c in table.indexes %}
         Index("{{ c.name }}",{% for col in c.columns %} "{{col.name}}",  {% endfor %} unique={{c.unique}}),
     {%- endfor %}{% if schema %}{{ '{' }}"schema": "{{schema}}"{{ '}' }}{% endif -%}
     )
