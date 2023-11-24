@@ -1,17 +1,18 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from typing import get_args
 from typing import get_type_hints
+from typing import IO
 
 from jinja2 import Template
-from pydantic import BaseModel
 from sqlalchemy import ColumnDefault
 from sqlalchemy.orm import DeclarativeBase
 
 from ..utils import lenient_issubclass
 
-T = Template(
+PY_TEMPLATE = Template(
     """
 class {{name}}(BaseModel):
 {%- for k,v in columns.items() %}
@@ -30,24 +31,23 @@ def tos(a: Any) -> str:
         return str(a)
     if lenient_issubclass(a, DeclarativeBase):
         return f"{a.__name__}"
+    if a.__module__ == "__main__":
+        return f"{a.__name__}"
     return f"{a.__module__}.{a.__name__}"
 
 
-def gettypes(dc: Any) -> set[Any]:
+def gettypes(dc: type[DeclarativeBase]) -> set[str]:
     def g(args: Any) -> Any:
-        aa = get_args(args)
-        if not aa:
-            yield args
-        for a in aa:
-            if lenient_issubclass(a, BaseModel):
-                yield a
-                continue
-            if type(a) is type:
-                yield a
-            elif a.__module__ in {"typing"}:
-                yield a
-            else:
-                yield from g(a)
+        istype = isinstance(args, type)
+        if istype and args.__module__ not in {"builtins"}:
+            yield args.__module__
+            return
+
+        if hasattr(args, "__module__") and args.__module__ in {"typing"}:
+            yield args.__module__
+
+        for a in get_args(args):
+            yield from g(a)
 
     s: set[Any] = set()
     for typ in get_type_hints(dc).values():
@@ -67,19 +67,25 @@ def get_defaults(dc: type[DeclarativeBase]) -> dict[str, Any]:
     return ret
 
 
-def sqla_to_py(*dcs: type[DeclarativeBase]) -> None:
-    print("from __future__ import annotations")
-
-    imports = {s.__module__ for dc in dcs for s in gettypes(dc)}
+def sqla_to_py(dcs: Sequence[type[DeclarativeBase]], out: IO[str]) -> None:
+    dcs = list(dcs)
+    print("from __future__ import annotations", file=out)
+    imports = {
+        s for dc in dcs for s in gettypes(dc) if s not in {"builtins", "__main__"}
+    }
     for v in imports:
-        if v in {"builtins"}:
-            continue
-        print(f"import {v}")
-    print("from pydantic import BaseModel")
+        print(f"import {v}", file=out)
+    print("from pydantic import BaseModel", file=out)
+
+    def torepr(v: Any) -> str | None:
+        if v is None:
+            return v
+        return repr(v)
+
     for dc in dcs:
         defaults = get_defaults(dc)
         columns = {
-            k: (tos(get_args(v)[0]), defaults.get(k, None))
+            k: (tos(get_args(v)[0]), torepr(defaults.get(k, None)))
             for k, v in get_type_hints(dc).items()
         }
-        print(T.render(name=dc.__name__, columns=columns))
+        print(PY_TEMPLATE.render(name=dc.__name__, columns=columns), file=out)
