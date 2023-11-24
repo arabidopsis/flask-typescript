@@ -365,7 +365,12 @@ class BaseBuilder(metaclass=ABCMeta):
         def build_func() -> TSThing | None:
             m = import_module(module)
             typ = getattr(m, name)
-            ok = is_dataclass_type(typ) or is_pydantic_type(typ)
+            ok = (
+                is_dataclass_type(typ)
+                or is_pydantic_type(typ)
+                or is_typeddict(typ)
+                or lenient_issubclass(typ, Enum)
+            )
             if not ok:
                 return None
             return self.get_type_ts(typ)

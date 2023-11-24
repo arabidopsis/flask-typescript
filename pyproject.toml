@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flask-typescript"
-version = "0.1.11"
+version = "0.1.12"
 description = ""
 authors = ["arabidopsis <ian.castleden@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,8 @@ packages = [{ include = "flask_typescript" }]
 include = [
     "flask_typescript/preamble.d.ts",
     "flask_typescript/py.typed",
-    "flask_typescript/orm/template.py.jinja",
+    "flask_typescript/orm/sqlachemy.py.jinja",
+    "flask_typescript/orm/pydantic.py.jinja",
 ]
 exclude = ["flask_typescript/unused/**"]
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import MISSING
 from typing import Any
 from typing import cast
@@ -279,7 +280,17 @@ def find_models(
 
     if mapped is not None:
         if mapped in m.__dict__:
-            a = m.__dict__[mapped]()
+            func = m.__dict__[mapped]
+            if not callable(func):
+                raise click.ClickException(
+                    f'"{mapped}" in {module} needs to be a function',
+                )
+
+            a = func()
+            if not isinstance(a, Iterable):
+                raise click.ClickException(
+                    f'"{mapped}" in {module} needs return an iterable of ORM classes',
+                )
         else:
             raise click.ClickException(f'no function named "{mapped} in {module}')
     else:
