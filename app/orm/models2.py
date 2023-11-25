@@ -7,6 +7,7 @@ from typing import get_args
 from typing import Literal
 from typing import TypedDict
 
+from sqlalchemy import ForeignKey
 from sqlalchemy import Integer
 from sqlalchemy import JSON
 from sqlalchemy import String
@@ -53,7 +54,7 @@ class Attachment(Base):
     __tablename__ = "attachment"
 
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
-    pubmed: Mapped[pubmed] = mapped_column()
+    pubmed: Mapped[pubmed] = mapped_column(ForeignKey("paper.pubmed"))
     name: Mapped[str | None] = mapped_column(String(128))
 
     timestamp: Mapped[datetime] = mapped_column(
@@ -73,7 +74,7 @@ class Attachment(Base):
 class Location(Base):
     __tablename__ = "location"
     id: Mapped[int] = mapped_column(init=False, primary_key=True)
-    pubmed: Mapped[pubmed] = mapped_column(index=True)
+    pubmed: Mapped[pubmed] = mapped_column(ForeignKey("paper.pubmed"), index=True)
     locus: Mapped[locus] = mapped_column(nullable=False)
     # location: Mapped[str] = mapped_column(Text, nullable=False)
     location: Mapped[set[values]] = mapped_column(SET(*get_args(values)))

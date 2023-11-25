@@ -7,6 +7,7 @@ from typing import get_args
 from typing import Literal
 from typing import TypedDict
 
+from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy import Integer
 from sqlalchemy import JSON
 from sqlalchemy import String
@@ -184,6 +185,8 @@ def orm(
                 default=None,
             )
 
+    ForeignKeyConstraint([ORMLocation.pubmed], [ORMPaper.pubmed])
+    ForeignKeyConstraint([ORMAttachment.pubmed], [ORMPaper.pubmed])
     return (ORMPaper, ORMAttachment, ORMLocation)
 
 
@@ -192,6 +195,7 @@ def mapped_models() -> list[type[Base]]:
 
 
 def test():
+    # pylint: disable=no-member
     from dataclasses import is_dataclass
 
     a, b, c = orm("a", "b", "c")
