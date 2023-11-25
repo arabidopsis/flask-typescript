@@ -27,7 +27,12 @@ def endpoints(
     server: str | None,
     with_doc: bool,
 ) -> None:
-    """Typescript types of Flask endpoints"""
+    """Typescript types of Flask endpoints.
+
+    INCLUDES is a list of regular expressions that try to match
+    flask route *endpoints*. (See `flask routes`). e.g. to include
+    only a particular blueprint use ^blueprint\\\\.
+    """
 
     if server:
         server = server.strip().rstrip("/")

@@ -14,9 +14,9 @@ from werkzeug.datastructures import FileStorage
 
 from .bp import bp
 from .orm.models import Attachment
-from flask_typescript.api import Api
-from flask_typescript.api import ApiError
-from flask_typescript.json import PyFlask as Flask
+from flask_typescript import Api
+from flask_typescript import ApiError
+from flask_typescript import PyFlask as Flask
 
 # pylint: disable=redefined-outer-name
 
@@ -170,6 +170,7 @@ def json2() -> list[dict[str, int]]:
 @app.post("/error")
 @api
 def error() -> Json:
+    """Throw ApiError"""
     raise ApiError(400, payload=dict(message="this has failed"))
 
 
