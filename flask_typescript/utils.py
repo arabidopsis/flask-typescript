@@ -206,11 +206,17 @@ class FlaskValueError(ValueError):
 
 
 @contextmanager
-def maybeclose(out: str | None, mode: str = "rt") -> Generator[IO[str], None, None]:
+def maybeclose(
+    out: str | None,
+    mode: str = "rt",
+    encoding: str | None = None,
+) -> Generator[IO[str], None, None]:
     import sys
 
     if out:
-        fp = open(out, mode)
+        if "t" in mode and encoding is None:
+            encoding = "utf-8"
+        fp = open(out, mode, encoding=encoding)
         close = True
     else:
         fp = sys.stdout
