@@ -126,7 +126,7 @@ def dataclasses(
     ns: str | None,
     sort: bool,
 ) -> None:
-    """Generate Typescript from dataclass/pydantic models specified in the command line modules"""
+    """Generate Typescript from dataclass/pydantic models specified in the command line MODULES"""
     dc_to_ts(out, modules, ignore_defaults, ns, sort)
 
 
@@ -149,8 +149,8 @@ def dc_to_ts(
     from importlib import import_module
     from typing import Iterator
     from pydantic import BaseModel
-    from .typing import TSBuilder, is_pydantic_type, is_dataclass_type
-    from .typing import is_typeddict  # type: ignore[attr-defined]
+    from .typing import TSBuilder
+    from .typing import is_interesting
     from .utils import maybeclose
 
     def find_py(module: str) -> Iterator[tuple[type[BaseModel], dict[str, Any], bool]]:
@@ -170,7 +170,7 @@ def dc_to_ts(
             is_exec = False
 
         for v in g.values():
-            if is_pydantic_type(v) or is_dataclass_type(v) or is_typeddict(v):
+            if is_interesting(v):
                 if v in exclude:
                     continue
                 yield v, g, is_exec

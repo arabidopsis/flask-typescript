@@ -75,6 +75,15 @@ def is_file_storage(typ: Any) -> bool:
     return isinstance(typ, type) and issubclass(typ, FileStorage)
 
 
+def is_interesting(typ: Any) -> bool:
+    return (
+        is_pydantic_type(typ)
+        or is_dataclass_type(typ)
+        or is_typeddict(typ)
+        or lenient_issubclass(typ, Enum)
+    )
+
+
 def get_dc_defaults(cls: type[Any]) -> dict[str, Any]:
     if not is_dataclass_type(cls):
         raise TypeError(
@@ -365,13 +374,7 @@ class BaseBuilder(metaclass=ABCMeta):
         def build_func() -> TSThing | None:
             m = import_module(module)
             typ = getattr(m, name)
-            ok = (
-                is_dataclass_type(typ)
-                or is_pydantic_type(typ)
-                or is_typeddict(typ)
-                or lenient_issubclass(typ, Enum)
-            )
-            if not ok:
+            if not is_interesting(typ):
                 return None
             return self.get_type_ts(typ)
 
