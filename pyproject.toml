@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "flask-typescript"
-version = "0.1.12"
+version = "0.1.13"
 description = ""
 authors = ["arabidopsis <ian.castleden@gmail.com>"]
 license = "MIT"
