@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from abc import ABC
 from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
 from dataclasses import field
 
 
-class ZOD:
+class ZOD(ABC):
     def __str__(self) -> str:
         return self.to_ts()
 
