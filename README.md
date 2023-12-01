@@ -81,7 +81,7 @@ Then on the client we can do:
 import type { User, Curators } from "./flask-types"
 import { Endpoints } from "./endpoints"
 
-export user_ok: Base.user_ok = async (user: User)  => {
+export user_ok: Curators.user_ok = async (user: User)  => {
   const resp = await fetch(Endpoints.Curators.user_ok.url(), {
     method: "post",
     body: JSON.stringify(user),
