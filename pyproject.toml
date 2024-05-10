@@ -15,9 +15,9 @@ include = [
 exclude = ["flask_typescript/unused/**"]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = ">=3.9"
 pydantic = "^2.0"
-flask = "^2.0"
+flask = "^3.0"
 sqlalchemy = { version = "^2.0", optional = true }
 # flask-sqlalchemy = { version = "^3.0.3", optional = true }
 
