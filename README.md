@@ -2,7 +2,7 @@
 
 Keep your front-end and back-end in sync.
 
-Remeber: Python typing is currently a [dog's breakfast](https://www.google.com/search?q=dog%27s+breakfast) compared to Typescript.
+Remember: Python typing is currently a [dog's breakfast](https://www.google.com/search?q=dog%27s+breakfast) compared to Typescript.
 
 Typescript for [flask](https://flask.palletsprojects.com/)
 based on [FastAPI](https://fastapi.tiangolo.com) and
