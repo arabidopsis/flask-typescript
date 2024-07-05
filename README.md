@@ -20,19 +20,8 @@ data.
 
 ```python
 
-python -m pip install git+https://git@github.com/arabidopsis/flask-typescript
-
-python -m pip install 'flask-typescript @ git+https://git@github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqlalchemy]'
+python -m pip install flask-typescript
 ```
-
-```python
-
-python -m pip install 'flask-typescript @ git+https://github.com/arabidopsis/flask-typescript@<rev>#flask-typescript[sqlalchemy]'
-```
-
-or in the `pyproject.toml` file as
-
-flask_typescript = { git = "https://github.com/arabidopsis/flask-typescript.git", branch="main" ,rev = "7df8d83d4cc...." }
 
 ## Warning:
 
@@ -42,7 +31,7 @@ between the two languages and the serialisation requirements of JSON:
 **only a subset of pydantic/typescript types will ever be supported**.
 Keep it simple people -- you'll be happier, I'll be happier :).
 
-In particular attributes that are `Callable`s will *not* translate!
+In particular attributes that are `Callable`s will _not_ translate!
 
 ## Usage
 
@@ -137,14 +126,3 @@ login.addEventListener("submit", async (e) => {
   <button type="submit">Login</button>
 </form>
 ```
-
-## TODO
-
-- Documentation :)
-- argument names or no? https://fastapi.tiangolo.com/tutorial/body-multiple-params
-- generate [zod](https://zod.dev/) verifiers from pydantic classes ?
-- Maybe a flag for deserialsation of [devalue](https://github.com/Rich-Harris/devalue) "json"
-  and also reserialsation in this format too?
-- Stream responses e.g. ServerSideEvent i.e. responses that are list[BaseModel], Iterator[BaseModel] etc.
-
-It seems a step too far to write the bodies of the fetch functions.
